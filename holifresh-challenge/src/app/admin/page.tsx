@@ -17,6 +17,7 @@ export default function AdminPage() {
         name: "",
         objectiveTotal: "50",
         rdvValueCents: "1000",
+        signaturesGoal: "15",
         joinCode: ""
     });
 
@@ -59,7 +60,7 @@ export default function AdminPage() {
             if (res.ok) {
                 const room = await res.json();
                 setRooms([room, ...rooms]);
-                setNewRoom({ name: "", objectiveTotal: "50", rdvValueCents: "1000", joinCode: "" });
+                setNewRoom({ name: "", objectiveTotal: "50", rdvValueCents: "1000", signaturesGoal: "15", joinCode: "" });
             }
         } catch (err) {
             console.error(err);
@@ -174,6 +175,16 @@ export default function AdminPage() {
                                 </div>
                             </div>
                             <div>
+                                <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Objectif Signatures</label>
+                                <input
+                                    type="number"
+                                    className="input-field font-bold"
+                                    value={newRoom.signaturesGoal}
+                                    onChange={(e) => setNewRoom({ ...newRoom, signaturesGoal: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div>
                                 <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Code de ralliement (Join Code)</label>
                                 <input
                                     type="text"
@@ -222,6 +233,7 @@ export default function AdminPage() {
                                                 <Lock className="w-3.5 h-3.5" /> {room.joinCode}
                                             </span>
                                             <span>Obj: <span className="text-holi-dark">{room.objectiveTotal}</span> RDVs</span>
+                                            <span>Signatures: <span className="text-holi-dark">{room.signaturesGoal}</span></span>
                                             <span>Val: <span className="text-holi-dark">{formatCents(room.rdvValueCents)}</span></span>
                                         </div>
                                     </div>

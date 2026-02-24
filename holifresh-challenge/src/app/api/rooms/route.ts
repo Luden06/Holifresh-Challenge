@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     }
 
     try {
-        const { name, objectiveTotal, rdvValueCents, joinCode } = await request.json();
+        const { name, objectiveTotal, rdvValueCents, joinCode, signaturesGoal } = await request.json();
 
         if (!name || !joinCode) {
             return NextResponse.json({ error: "Name and joinCode are required" }, { status: 400 });
@@ -22,8 +22,8 @@ export async function POST(request: Request) {
         const roomCode = generateRoomId();
 
         const stmt = db.prepare(`
-            INSERT INTO Room (id, name, joinCode, objectiveTotal, rdvValueCents)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO Room (id, name, joinCode, objectiveTotal, rdvValueCents, signaturesGoal)
+            VALUES (?, ?, ?, ?, ?, ?)
         `);
 
         stmt.run(
@@ -31,7 +31,8 @@ export async function POST(request: Request) {
             name,
             joinCode,
             parseInt(objectiveTotal) || 0,
-            parseInt(rdvValueCents) || 0
+            parseInt(rdvValueCents) || 0,
+            parseInt(signaturesGoal) || 0
         );
 
         // Fetch the created room to return it

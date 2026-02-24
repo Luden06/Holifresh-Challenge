@@ -200,7 +200,7 @@ export default function TVScreenPage() {
                             <div className="flex items-center gap-3 bg-white/70 border border-black/5 p-3 rounded-2xl shadow-sm">
                                 <Award className="w-7 h-7 text-[#007f47] shrink-0" />
                                 <div className="min-w-0">
-                                    <p className="text-lg lg:text-xl font-heading font-black text-[#007f47] italic tracking-tighter leading-none">SIGNATURES : 15</p>
+                                    <p className="text-lg lg:text-xl font-heading font-black text-[#007f47] italic tracking-tighter leading-none">SIGNATURES : {summary?.signaturesGoal || 0}</p>
                                     <p className="text-[7px] font-black opacity-30 mt-0.5">CONTRATS ACTIFS</p>
                                 </div>
                             </div>

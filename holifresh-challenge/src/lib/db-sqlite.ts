@@ -18,7 +18,8 @@ db.exec(`
         rdvValueCents INTEGER DEFAULT 0,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         openedAt DATETIME,
-        closedAt DATETIME
+        closedAt DATETIME,
+        signaturesGoal INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS Participant (
@@ -47,5 +48,12 @@ db.exec(`
         FOREIGN KEY (participantId) REFERENCES Participant(id) ON DELETE CASCADE
     );
 `);
+
+// Migration: Add signaturesGoal if it doesn't exist
+try {
+    db.exec("ALTER TABLE Room ADD COLUMN signaturesGoal INTEGER DEFAULT 0");
+} catch (e) {
+    // Column likely already exists
+}
 
 export default db;

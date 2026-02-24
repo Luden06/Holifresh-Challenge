@@ -46,6 +46,7 @@ export async function GET(
             objectiveTotal: room.objectiveTotal,
             objectiveProgress: room.objectiveTotal > 0 ? (totals / room.objectiveTotal) * 100 : 0,
             leaderboard: formattedLeaderboard,
+            signaturesGoal: room.signaturesGoal,
             rdvValueCents: room.rdvValueCents,
             lastEventAt: new Date().toISOString(),
         });
