@@ -1,0 +1,279 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Lock, Plus, DoorOpen, DoorClosed, Link as LinkIcon, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { formatCents } from "@/lib/utils";
+
+export default function AdminPage() {
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [adminCode, setAdminCode] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    const [rooms, setRooms] = useState<any[]>([]);
+    const [newRoom, setNewRoom] = useState({
+        name: "",
+        objectiveTotal: "50",
+        rdvValueCents: "1000",
+        joinCode: ""
+    });
+
+    const router = useRouter();
+
+    async function handleLogin(e: React.FormEvent) {
+        e.preventDefault();
+        setLoading(true);
+        setError("");
+
+        try {
+            const res = await fetch("/api/admin/login", {
+                method: "POST",
+                body: JSON.stringify({ code: adminCode }),
+            });
+
+            if (res.ok) {
+                setIsLoggedIn(true);
+                // In a real app, you'd fetch existing rooms here
+            } else {
+                setError("Code administrateur invalide");
+            }
+        } catch (err) {
+            setError("Erreur de connexion");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function createRoom(e: React.FormEvent) {
+        e.preventDefault();
+        setLoading(true);
+
+        try {
+            const res = await fetch("/api/rooms", {
+                method: "POST",
+                body: JSON.stringify(newRoom),
+            });
+
+            if (res.ok) {
+                const room = await res.json();
+                setRooms([room, ...rooms]);
+                setNewRoom({ name: "", objectiveTotal: "50", rdvValueCents: "1000", joinCode: "" });
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function toggleRoom(roomId: string, action: 'open' | 'close') {
+        try {
+            const res = await fetch(`/api/rooms/${roomId}/${action}`, { method: "POST" });
+            if (res.ok) {
+                const updated = await res.json();
+                setRooms(rooms.map(r => r.id === roomId ? updated : r));
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    if (!isLoggedIn) {
+        return (
+            <div className="flex items-center justify-center min-h-screen p-4">
+                <div className="card max-w-md w-full animate-float">
+                    <div className="flex justify-center mb-6">
+                        <div className="p-4 bg-holi-orange/10 rounded-full">
+                            <Lock className="w-8 h-8 text-holi-orange" />
+                        </div>
+                    </div>
+                    <h1 className="text-2xl font-heading font-black text-center mb-2 text-holi-dark uppercase tracking-tight">Administration</h1>
+                    <p className="text-holi-grey text-center mb-8">Entrez le code secret pour continuer</p>
+
+                    <form onSubmit={handleLogin} className="space-y-4">
+                        <input
+                            type="password"
+                            placeholder="Code Admin"
+                            className="input-field text-center text-xl tracking-widest"
+                            value={adminCode}
+                            onChange={(e) => setAdminCode(e.target.value)}
+                            required
+                        />
+                        {error && <p className="text-holi-pink text-sm text-center font-bold italic">{error}</p>}
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="btn-primary w-full"
+                        >
+                            {loading ? "Connexion..." : "Se connecter"}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-4xl font-heading font-black text-holi-dark uppercase italic tracking-tighter">Dashboard Admin</h1>
+                    <p className="text-holi-grey font-bold">Gérez vos événements et suivez les performances</p>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Create Room Form */}
+                <div className="lg:col-span-1">
+                    <div className="card">
+                        <h2 className="text-xl font-heading font-black mb-6 flex items-center gap-2 text-holi-orange uppercase italic">
+                            <Plus className="w-5 h-5" />
+                            Nouvelle Room
+                        </h2>
+                        <form onSubmit={createRoom} className="space-y-4">
+                            <div>
+                                <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Nom de l'événement</label>
+                                <input
+                                    type="text"
+                                    placeholder="ex: Kickoff Q1 2026"
+                                    className="input-field"
+                                    value={newRoom.name}
+                                    onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Objectif (RDV)</label>
+                                    <input
+                                        type="number"
+                                        className="input-field font-bold"
+                                        value={newRoom.objectiveTotal}
+                                        onChange={(e) => setNewRoom({ ...newRoom, objectiveTotal: e.target.value })}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Valeur RDV (€)</label>
+                                    <input
+                                        type="number"
+                                        className="input-field font-bold"
+                                        value={isNaN(parseInt(newRoom.rdvValueCents)) ? "" : parseInt(newRoom.rdvValueCents) / 100}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === "") {
+                                                setNewRoom({ ...newRoom, rdvValueCents: "" });
+                                            } else {
+                                                setNewRoom({ ...newRoom, rdvValueCents: (Math.round(parseFloat(val) * 100)).toString() });
+                                            }
+                                        }}
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Code de ralliement (Join Code)</label>
+                                <input
+                                    type="text"
+                                    placeholder="ex: HOLI2026"
+                                    className="input-field font-mono uppercase font-black tracking-widest text-center text-holi-orange"
+                                    value={newRoom.joinCode}
+                                    onChange={(e) => setNewRoom({ ...newRoom, joinCode: e.target.value.toUpperCase() })}
+                                    required
+                                />
+                            </div>
+                            <button disabled={loading} type="submit" className="btn-primary w-full mt-4 text-sm font-black uppercase tracking-wider">
+                                Créer la Room
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                {/* Rooms List */}
+                <div className="lg:col-span-2 space-y-4">
+                    <h2 className="text-xl font-heading font-black flex items-center gap-2 px-2 text-holi-navy uppercase italic">
+                        Rooms Actives
+                    </h2>
+
+                    {rooms.length === 0 ? (
+                        <div className="card text-center py-12 text-neutral-500">
+                            Aucune room créée pour le moment.
+                        </div>
+                    ) : (
+                        rooms.map((room) => (
+                            <div key={room.id} className="card hover:border-white/20 transition-all">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <h3 className="text-xl font-bold text-holi-dark">{room.name}</h3>
+                                            <span className={cn(
+                                                "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider",
+                                                room.status === "OPEN" ? "bg-holi-blue/10 text-holi-blue" :
+                                                    room.status === "CLOSED" ? "bg-holi-dark/10 text-holi-grey" :
+                                                        "bg-holi-orange/10 text-holi-orange"
+                                            )}>
+                                                {room.status}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-4 text-xs font-bold text-holi-grey/80">
+                                            <span className="flex items-center gap-1.5 px-2 py-0.5 bg-holi-navy/5 rounded text-holi-navy">
+                                                <Lock className="w-3.5 h-3.5" /> {room.joinCode}
+                                            </span>
+                                            <span>Obj: <span className="text-holi-dark">{room.objectiveTotal}</span> RDVs</span>
+                                            <span>Val: <span className="text-holi-dark">{formatCents(room.rdvValueCents)}</span></span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {room.status === "DRAFT" || room.status === "CLOSED" ? (
+                                            <button
+                                                onClick={() => toggleRoom(room.id, 'open')}
+                                                className="btn-ghost text-xs py-2 px-4 text-holi-blue hover:bg-holi-blue/10 border-holi-blue/20 uppercase font-black"
+                                            >
+                                                <DoorOpen className="w-4 h-4" /> Ouvrir
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => toggleRoom(room.id, 'close')}
+                                                className="btn-ghost text-xs py-2 px-4 text-holi-pink hover:bg-holi-pink/10 border-holi-pink/20 uppercase font-black"
+                                            >
+                                                <DoorClosed className="w-4 h-4" /> Fermer
+                                            </button>
+                                        )}
+
+                                        <Link
+                                            href={`/admin/${room.id}/events`}
+                                            className="btn-ghost text-xs py-2 px-4 uppercase font-black"
+                                        >
+                                            Events
+                                        </Link>
+                                    </div>
+                                </div>
+
+                                {room.status !== "DRAFT" && (
+                                    <div className="mt-6 pt-6 border-t border-black/5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <Link href={`/join/${room.id}`} target="_blank" className="flex items-center gap-2 text-xs font-bold text-holi-grey hover:text-holi-orange transition-colors">
+                                            <LinkIcon className="w-3 h-3" /> Page Join <ExternalLink className="w-3 h-3" />
+                                        </Link>
+                                        <Link href={`/room/${room.id}`} target="_blank" className="flex items-center gap-2 text-xs font-bold text-holi-grey hover:text-holi-orange transition-colors">
+                                            <LinkIcon className="w-3 h-3" /> Page Sales <ExternalLink className="w-3 h-3" />
+                                        </Link>
+                                        <Link href={`/screen/${room.id}`} target="_blank" className="flex items-center gap-2 text-xs font-bold text-holi-grey hover:text-holi-orange transition-colors">
+                                            <LinkIcon className="w-3 h-3" /> Page TV <ExternalLink className="w-3 h-3" />
+                                        </Link>
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function cn(...classes: any[]) {
+    return classes.filter(Boolean).join(" ");
+}

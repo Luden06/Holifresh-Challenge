@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #fff7f1;
+  --color-foreground: #272727;
+
+  /* HoliFresh Brand Palette */
+  --color-holi-orange: #FF914D;
+  --color-holi-red: #DA3B17;
+  --color-holi-blue: #4DADDF;
+  --color-holi-yellow: #FFBC4D;
+  --color-holi-green: #007f47;
+  --color-holi-navy: #0079ed;
+  --color-holi-purple: #826094;
+  --color-holi-pink: #ce2258;
+  --color-holi-dark: #272727;
+  --color-holi-grey: #737373;
+  --color-holi-light: #fff7f1;
+
+  /* Typography */
+  --font-heading: var(--font-josefin), sans-serif;
+  --font-subheading: var(--font-cabin), sans-serif;
+  --font-body: var(--font-cabin), sans-serif;
+  --font-logo: "Brandon Grotesque", var(--font-lato), sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-holi-light text-holi-dark antialiased min-h-screen font-body;
+    background-image:
+      radial-gradient(circle at 0% 0%, rgba(255, 145, 77, 0.05) 0%, transparent 50%),
+      radial-gradient(circle at 100% 100%, rgba(0, 121, 237, 0.05) 0%, transparent 50%);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading font-black tracking-tight uppercase italic;
+  }
+}
+
+@layer utilities {
+  .full-highlight {
+    @apply bg-holi-orange text-white rounded-lg px-2 py-0.5;
+  }
+
+  .half-highlight {
+    @apply bg-holi-orange/33 px-2 py-0.5 rounded-sm;
+  }
+
+  .color-highlight {
+    @apply text-holi-blue;
+  }
+
+  .glass {
+    background-color: var(--color-card-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 2s ease-in-out infinite;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-holi-orange hover:bg-holi-red text-white font-bold px-6 py-3 rounded-xl transition-all active:scale-95 shadow-lg shadow-holi-orange/20 flex items-center justify-center gap-2 border-0 cursor-pointer;
+    background-image: linear-gradient(135deg, #FF914D 0%, #DA3B17 100%);
+  }
+
+  .btn-ghost {
+    @apply bg-black/5 hover:bg-black/10 text-holi-dark font-bold px-6 py-3 rounded-xl transition-all active:scale-95 border border-black/5 flex items-center justify-center gap-2 cursor-pointer;
+  }
+
+  .input-field {
+    @apply bg-white border border-black/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-holi-orange/50 transition-all placeholder:text-holi-grey/50 w-full text-holi-dark;
+  }
+
+  .card {
+    @apply bg-white/70 backdrop-blur-md border border-black/5 p-6 rounded-2xl shadow-sm;
+  }
+}
+
+/* Animations */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+@keyframes pulse-soft {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}

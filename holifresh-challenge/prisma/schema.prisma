@@ -1,0 +1,56 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// Room model
+model Room {
+  id                String   @id // roomCode provided by admin
+  name              String
+  status            String   @default("DRAFT") // DRAFT, OPEN, CLOSED
+  joinCode          String
+  objectiveTotal    Int      @default(0)
+  rdvValueCents     Int      @default(0)
+  createdAt         DateTime @default(now())
+  openedAt          DateTime?
+  closedAt          DateTime?
+  
+  participants      Participant[]
+  claims            Claim[]
+}
+
+// Participant model
+model Participant {
+  id              String   @id @default(uuid())
+  roomId          String
+  displayName     String
+  displayNameKey  String   // Normalized version for collision checks
+  tokenHash       String   @unique // Secret token hash stored on client
+  lastClaimAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  claims          Claim[]
+
+  @@unique([roomId, displayNameKey])
+}
+
+// Claim model (event log)
+model Claim {
+  id               String   @id @default(uuid())
+  roomId           String
+  participantId    String
+  createdAt        DateTime @default(now())
+  clientRequestId  String   @unique // Idempotency check
+  status           String   @default("VALID") // VALID, CANCELLED
+  cancelledAt      DateTime?
+  cancelledBy      String?
+  cancelReason     String?
+
+  room             Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant      Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+}
