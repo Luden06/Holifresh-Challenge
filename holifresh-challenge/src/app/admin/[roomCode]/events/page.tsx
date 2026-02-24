@@ -17,7 +17,8 @@ import Link from "next/link";
 import { formatCents, cn } from "@/lib/utils";
 
 export default function AdminEventsPage() {
-    const { roomId } = useParams();
+    const { roomCode } = useParams();
+    const roomId = roomCode; // Keep roomId variable for internal consistency if needed or replace it
     const [events, setEvents] = useState<any[]>([]);
     const [summary, setSummary] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -46,7 +47,7 @@ export default function AdminEventsPage() {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 5000);
+        const interval = setInterval(fetchData, 2000); // 2s refresh for admin
         return () => clearInterval(interval);
     }, [roomId]);
 
@@ -98,7 +99,7 @@ export default function AdminEventsPage() {
                     </div>
                 </div>
                 <a
-                    href={`/api/rooms/${roomId}/export`}
+                    href={`/api/rooms/${roomCode}/export`}
                     className="btn-ghost text-sm py-2 px-4 gap-2"
                 >
                     <Download className="w-4 h-4" /> Export CSV
@@ -118,6 +119,10 @@ export default function AdminEventsPage() {
                 <div className="card p-4">
                     <p className="text-xs text-neutral-400 uppercase tracking-wider mb-1">Objectif</p>
                     <p className="text-2xl font-bold">{summary?.objectiveTotal}</p>
+                </div>
+                <div className="card p-4">
+                    <p className="text-xs text-neutral-400 uppercase tracking-wider mb-1">Obj. Signatures</p>
+                    <p className="text-2xl font-bold text-accent">{summary?.signaturesGoal}</p>
                 </div>
                 <div className="card p-4">
                     <p className="text-xs text-neutral-400 uppercase tracking-wider mb-1">Progression</p>
