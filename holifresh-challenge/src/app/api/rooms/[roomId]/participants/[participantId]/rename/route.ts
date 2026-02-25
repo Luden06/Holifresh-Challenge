@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -20,11 +20,10 @@ export async function POST(
             return NextResponse.json({ error: "Display name is required" }, { status: 400 });
         }
 
-        db.prepare(`
-            UPDATE Participant SET displayName = ? WHERE id = ?
-        `).run(displayName, participantId);
-
-        const participant = db.prepare("SELECT * FROM Participant WHERE id = ?").get(participantId);
+        const participant = await prisma.participant.update({
+            where: { id: participantId },
+            data: { displayName },
+        });
 
         return NextResponse.json(participant);
     } catch (error) {

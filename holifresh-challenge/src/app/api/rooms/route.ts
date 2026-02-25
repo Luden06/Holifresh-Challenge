@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { generateRoomId } from "@/lib/utils";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -21,22 +21,16 @@ export async function POST(request: Request) {
 
         const roomCode = generateRoomId();
 
-        const stmt = db.prepare(`
-            INSERT INTO Room (id, name, joinCode, objectiveTotal, rdvValueCents, signaturesGoal)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `);
-
-        stmt.run(
-            roomCode,
-            name,
-            joinCode,
-            parseInt(objectiveTotal) || 0,
-            parseInt(rdvValueCents) || 0,
-            parseInt(signaturesGoal) || 0
-        );
-
-        // Fetch the created room to return it
-        const room = db.prepare("SELECT * FROM Room WHERE id = ?").get(roomCode);
+        const room = await prisma.room.create({
+            data: {
+                id: roomCode,
+                name,
+                joinCode,
+                objectiveTotal: parseInt(objectiveTotal) || 0,
+                rdvValueCents: parseInt(rdvValueCents) || 0,
+                signaturesGoal: parseInt(signaturesGoal) || 0,
+            },
+        });
 
         return NextResponse.json(room);
     } catch (error) {

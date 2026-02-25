@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { hashToken } from "@/lib/utils";
 import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
@@ -20,20 +20,28 @@ export async function POST(
 
         // 1. Authenticate participant
         const tokenHash = hashToken(participantToken);
-        const participant = db.prepare("SELECT * FROM Participant WHERE tokenHash = ?").get(tokenHash) as any;
+        const participant = await prisma.participant.findUnique({
+            where: { tokenHash },
+        });
 
         if (!participant || participant.roomId !== roomId) {
             return NextResponse.json({ error: "Invalid participant token" }, { status: 401 });
         }
 
         // 2. Check room status
-        const room = db.prepare("SELECT status FROM Room WHERE id = ?").get(roomId) as any;
+        const room = await prisma.room.findUnique({
+            where: { id: roomId },
+            select: { status: true },
+        });
+
         if (!room || room.status !== "OPEN") {
             return NextResponse.json({ error: "Room is not open" }, { status: 403 });
         }
 
         // 3. Idempotency Check (clientRequestId)
-        const existingClaim = db.prepare("SELECT id FROM Claim WHERE clientRequestId = ?").get(clientRequestId);
+        const existingClaim = await prisma.claim.findUnique({
+            where: { clientRequestId },
+        });
         if (existingClaim) {
             return NextResponse.json({ success: true, duplicated: true });
         }
@@ -50,20 +58,23 @@ export async function POST(
 
         // 5. Create Claim and Update Participant in a Transaction
         const claimId = uuidv4();
-        const nowStr = now.toISOString();
 
-        const transaction = db.transaction(() => {
-            db.prepare(`
-                INSERT INTO Claim (id, roomId, participantId, clientRequestId, status, createdAt)
-                VALUES (?, ?, ?, ?, 'VALID', ?)
-            `).run(claimId, roomId, participant.id, clientRequestId, nowStr);
-
-            db.prepare(`
-                UPDATE Participant SET lastClaimAt = ? WHERE id = ?
-            `).run(nowStr, participant.id);
-        });
-
-        transaction();
+        await prisma.$transaction([
+            prisma.claim.create({
+                data: {
+                    id: claimId,
+                    roomId,
+                    participantId: participant.id,
+                    clientRequestId,
+                    status: 'VALID',
+                    createdAt: now,
+                },
+            }),
+            prisma.participant.update({
+                where: { id: participant.id },
+                data: { lastClaimAt: now },
+            }),
+        ]);
 
         return NextResponse.json({ success: true, claimId });
     } catch (error) {

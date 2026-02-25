@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -14,16 +14,24 @@ export async function GET(
     }
 
     try {
-        const room = db.prepare("SELECT * FROM Room WHERE id = ?").get(roomId) as any;
+        const room = await prisma.room.findUnique({
+            where: { id: roomId },
+        });
         if (!room) return new Response("Room not found", { status: 404 });
 
-        const claims = db.prepare(`
-            SELECT c.*, p.displayName as participantName
-            FROM Claim c
-            JOIN Participant p ON c.participantId = p.id
-            WHERE c.roomId = ?
-            ORDER BY c.createdAt DESC
-        `).all(roomId) as any[];
+        const claims = await prisma.claim.findMany({
+            where: { roomId: roomId },
+            include: {
+                participant: {
+                    select: {
+                        displayName: true,
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+        });
 
         // CSV Headers
         const headers = [
@@ -44,11 +52,11 @@ export async function GET(
             const business = claim.status === "VALID" ? room.rdvValueCents : 0;
             return [
                 claim.id,
-                claim.createdAt, // Already a string ISO
+                claim.createdAt.toISOString(),
                 claim.status,
                 claim.participantId,
-                claim.participantName,
-                claim.cancelledAt || "",
+                claim.participant.displayName,
+                claim.cancelledAt?.toISOString() || "",
                 claim.cancelledBy || "",
                 claim.cancelReason || "",
                 claim.roomId,

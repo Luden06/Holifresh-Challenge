@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -14,25 +14,23 @@ export async function GET(
     }
 
     try {
-        const claims = db.prepare(`
-            SELECT c.*, p.displayName as participantName, p.id as participantId
-            FROM Claim c
-            JOIN Participant p ON c.participantId = p.id
-            WHERE c.roomId = ?
-            ORDER BY c.createdAt DESC
-            LIMIT 100
-        `).all(roomId) as any[];
+        const claims = await prisma.claim.findMany({
+            where: { roomId: roomId },
+            include: {
+                participant: {
+                    select: {
+                        id: true,
+                        displayName: true,
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+            take: 100,
+        });
 
-        // Format to match old structure if needed
-        const formattedClaims = claims.map(c => ({
-            ...c,
-            participant: {
-                id: c.participantId,
-                displayName: c.participantName
-            }
-        }));
-
-        return NextResponse.json(formattedClaims);
+        return NextResponse.json(claims);
     } catch (error) {
         console.error("Fetch events error:", error);
         return NextResponse.json({ error: "Failed to fetch events" }, { status: 500 });

@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -10,32 +10,49 @@ export async function GET(
     const { roomId } = await params;
 
     try {
-        const room = db.prepare("SELECT * FROM Room WHERE id = ?").get(roomId) as any;
+        const room = await prisma.room.findUnique({
+            where: { id: roomId },
+            include: {
+                _count: {
+                    select: {
+                        claims: {
+                            where: { status: 'VALID' }
+                        }
+                    }
+                },
+                participants: {
+                    select: {
+                        id: true,
+                        displayName: true,
+                        _count: {
+                            select: {
+                                claims: {
+                                    where: { status: 'VALID' }
+                                }
+                            }
+                        }
+                    },
+                    orderBy: {
+                        claims: {
+                            _count: 'desc'
+                        }
+                    },
+                    take: 10
+                }
+            }
+        });
 
         if (!room) {
             return NextResponse.json({ error: "Room not found" }, { status: 404 });
         }
 
-        const totalsRow = db.prepare("SELECT COUNT(*) as count FROM Claim WHERE roomId = ? AND status = 'VALID'").get(roomId) as any;
-        const totals = totalsRow?.count || 0;
+        const totals = room._count.claims;
 
-        // Get leaderboard
-        const leaderboard = db.prepare(`
-            SELECT 
-                p.id, 
-                p.displayName, 
-                (SELECT COUNT(*) FROM Claim c WHERE c.participantId = p.id AND c.status = 'VALID') as score
-            FROM Participant p
-            WHERE p.roomId = ?
-            ORDER BY score DESC
-            LIMIT 10
-        `).all(roomId) as any[];
-
-        const formattedLeaderboard = leaderboard.map((p: any) => ({
+        const formattedLeaderboard = room.participants.map((p: any) => ({
             id: p.id,
             displayName: p.displayName,
-            score: p.score,
-            businessCents: p.score * room.rdvValueCents,
+            score: p._count.claims,
+            businessCents: p._count.claims * room.rdvValueCents,
         }));
 
         return NextResponse.json({

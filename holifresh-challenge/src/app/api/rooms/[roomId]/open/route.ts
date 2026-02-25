@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -14,12 +14,14 @@ export async function POST(
     }
 
     try {
-        const now = new Date().toISOString();
-        db.prepare(`
-            UPDATE Room SET status = 'OPEN', openedAt = ? WHERE id = ?
-        `).run(now, roomId);
-
-        const room = db.prepare("SELECT * FROM Room WHERE id = ?").get(roomId);
+        const now = new Date();
+        const room = await prisma.room.update({
+            where: { id: roomId },
+            data: {
+                status: 'OPEN',
+                openedAt: now,
+            },
+        });
 
         return NextResponse.json(room);
     } catch (error) {

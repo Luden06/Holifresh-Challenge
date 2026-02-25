@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { hashToken } from "@/lib/utils";
 import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
@@ -18,7 +18,9 @@ export async function POST(
             return NextResponse.json({ error: "Display name and join code are required" }, { status: 400 });
         }
 
-        const room = db.prepare("SELECT * FROM Room WHERE id = ?").get(roomId) as any;
+        const room = await prisma.room.findUnique({
+            where: { id: roomId },
+        });
 
         if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 });
         if (room.status !== "OPEN") return NextResponse.json({ error: "Room is not open" }, { status: 403 });
@@ -33,8 +35,14 @@ export async function POST(
 
         // Check for collisions and auto-suffix
         while (true) {
-            const existing = db.prepare("SELECT id FROM Participant WHERE roomId = ? AND displayNameKey = ?")
-                .get(roomId, finalNameKey);
+            const existing = await prisma.participant.findUnique({
+                where: {
+                    roomId_displayNameKey: {
+                        roomId: roomId,
+                        displayNameKey: finalNameKey,
+                    },
+                },
+            });
 
             if (!existing) break;
 
@@ -48,12 +56,15 @@ export async function POST(
         const tokenHash = hashToken(token);
         const participantId = uuidv4();
 
-        const stmt = db.prepare(`
-            INSERT INTO Participant (id, roomId, displayName, displayNameKey, tokenHash)
-            VALUES (?, ?, ?, ?, ?)
-        `);
-
-        stmt.run(participantId, roomId, finalName, finalNameKey, tokenHash);
+        await prisma.participant.create({
+            data: {
+                id: participantId,
+                roomId: roomId,
+                displayName: finalName,
+                displayNameKey: finalNameKey,
+                tokenHash: tokenHash,
+            },
+        });
 
         return NextResponse.json({
             participantToken: token,

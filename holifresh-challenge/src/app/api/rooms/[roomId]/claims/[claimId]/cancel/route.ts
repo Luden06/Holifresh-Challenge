@@ -1,4 +1,4 @@
-import db from "@/lib/db-sqlite";
+import prisma from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -15,15 +15,17 @@ export async function POST(
 
     try {
         const { reason } = await request.json().catch(() => ({ reason: "" }));
-        const now = new Date().toISOString();
+        const now = new Date();
 
-        db.prepare(`
-            UPDATE Claim 
-            SET status = 'CANCELLED', cancelledAt = ?, cancelledBy = 'admin', cancelReason = ? 
-            WHERE id = ?
-        `).run(now, reason || "Admin cancellation", claimId);
-
-        const claim = db.prepare("SELECT * FROM Claim WHERE id = ?").get(claimId);
+        const claim = await prisma.claim.update({
+            where: { id: claimId },
+            data: {
+                status: 'CANCELLED',
+                cancelledAt: now,
+                cancelledBy: 'admin',
+                cancelReason: reason || "Admin cancellation",
+            },
+        });
 
         return NextResponse.json(claim);
     } catch (error) {
