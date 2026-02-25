@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
     Trophy,
@@ -10,10 +10,53 @@ import {
     AlertCircle,
     PlusCircle,
     TrendingUp,
-    User as UserIcon
+    User as UserIcon,
+    CalendarCheck
 } from "lucide-react";
 import { formatCents, cn } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
+
+// Particle system for the "Boom" effect
+class Particle {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    size: number;
+    color: string;
+    life: number;
+    maxLife: number;
+
+    constructor(x: number, y: number, color: string) {
+        this.x = x;
+        this.y = y;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 8 + 4;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+        this.size = Math.random() * 6 + 2;
+        this.color = color;
+        this.life = 0;
+        this.maxLife = Math.random() * 30 + 30;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.2; // gravity
+        this.vx *= 0.98;
+        this.life++;
+    }
+
+    draw(ctx: CanvasRenderingContext2D) {
+        const opacity = 1 - (this.life / this.maxLife);
+        ctx.globalAlpha = opacity;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
 
 export default function RoomPage() {
     const { roomCode } = useParams();
@@ -24,6 +67,12 @@ export default function RoomPage() {
     const [loading, setLoading] = useState(true);
     const [claiming, setClaiming] = useState(false);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
+    // Animation refs
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const particlesRef = useRef<Particle[]>([]);
+    const animationFrameRef = useRef<number | null>(null);
+    const buttonRef = useRef<HTMLDivElement>(null);
 
     const fetchSummary = useCallback(async () => {
         try {
@@ -39,7 +88,6 @@ export default function RoomPage() {
     }, [roomCode]);
 
     useEffect(() => {
-        // Check for participant identity
         const token = localStorage.getItem(`room_${roomCode}_token`);
         const name = localStorage.getItem(`room_${roomCode}_name`);
         const id = localStorage.getItem(`room_${roomCode}_id`);
@@ -53,8 +101,47 @@ export default function RoomPage() {
         fetchSummary();
 
         const interval = setInterval(fetchSummary, 5000);
-        return () => clearInterval(interval);
+
+        // Animation loop
+        const animate = () => {
+            const canvas = canvasRef.current;
+            const ctx = canvas?.getContext('2d');
+            if (canvas && ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                particlesRef.current = particlesRef.current.filter(p => p.life < p.maxLife);
+                particlesRef.current.forEach(p => {
+                    p.update();
+                    p.draw(ctx);
+                });
+            }
+            animationFrameRef.current = requestAnimationFrame(animate);
+        };
+        animationFrameRef.current = requestAnimationFrame(animate);
+
+        return () => {
+            clearInterval(interval);
+            if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        };
     }, [roomCode, router, fetchSummary]);
+
+    const triggerBurst = () => {
+        const canvas = canvasRef.current;
+        const button = buttonRef.current;
+        if (!canvas || !button) return;
+
+        const rect = button.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+
+        const colors = ['#FF914D', '#0079ed', '#da3b17', '#ffffff'];
+        for (let i = 0; i < 40; i++) {
+            particlesRef.current.push(new Particle(x, y, colors[Math.floor(Math.random() * colors.length)]));
+        }
+
+        // Screen shake
+        document.body.classList.add('animate-shake-short');
+        setTimeout(() => document.body.classList.remove('animate-shake-short'), 200);
+    };
 
     async function handleClaim() {
         if (!participant || claiming) return;
@@ -62,9 +149,8 @@ export default function RoomPage() {
         setClaiming(true);
         setFeedback(null);
 
-        // Haptic feedback if supported
         if (typeof window !== "undefined" && window.navigator.vibrate) {
-            window.navigator.vibrate(50);
+            window.navigator.vibrate([40, 30, 40]);
         }
 
         try {
@@ -77,17 +163,24 @@ export default function RoomPage() {
             });
 
             if (res.ok) {
+                // SUCCESS: Trigger animation and hold for 3s (cooldown)
+                triggerBurst();
                 setFeedback({ type: 'success', message: "+1 RDV Validé !" });
                 fetchSummary();
-                // Clear success feedback after 3s
-                setTimeout(() => setFeedback(null), 3000);
+
+                // Clear feedback and release claiming status after 3 seconds (align with server COOLDOWN_MS)
+                setTimeout(() => {
+                    setFeedback(null);
+                    setClaiming(false);
+                }, 3000);
             } else {
                 const err = await res.json();
                 setFeedback({ type: 'error', message: err.error || "Une erreur est survenue" });
+                // If error (like 429), allow retrying immediately in case the 3s passed on server but client state didn't refresh
+                setClaiming(false);
             }
         } catch (err) {
             setFeedback({ type: 'error', message: "Impossible de valider le RDV" });
-        } finally {
             setClaiming(false);
         }
     }
@@ -100,16 +193,25 @@ export default function RoomPage() {
         );
     }
 
-    // Find personal score
     const personalStats = summary?.leaderboard?.find((p: any) => p.id === participant?.id);
+    const personalScore = personalStats?.score || 0;
+    const teamScore = summary?.totals || 0;
+    const objective = summary?.objectiveTotal || 50;
 
     return (
-        <div className="max-w-4xl mx-auto p-4 flex flex-col min-h-screen gap-6 pb-24 md:pb-8">
+        <div className="max-w-4xl mx-auto p-4 flex flex-col min-h-screen gap-6 pb-24 md:pb-8 relative">
+            <canvas
+                ref={canvasRef}
+                className="fixed inset-0 pointer-events-none z-[100]"
+                width={typeof window !== 'undefined' ? window.innerWidth : 0}
+                height={typeof window !== 'undefined' ? window.innerHeight : 0}
+            />
+
             {/* Header / Stats Summary */}
             <header className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-holi-orange/10 rounded-xl flex items-center justify-center">
-                        <Target className="w-6 h-6 text-holi-orange" />
+                        <CalendarCheck className="w-6 h-6 text-holi-orange" />
                     </div>
                     <div>
                         <h1 className="font-heading font-bold text-xl leading-tight text-holi-navy">{summary?.roomName}</h1>
@@ -125,35 +227,52 @@ export default function RoomPage() {
                 </div>
             </header>
 
-            {/* Team Progress Card */}
-            <div className="card bg-gradient-to-br from-holi-blue/5 to-white border-holi-blue/10 p-5">
+            {/* Team Progress Card with Personal Overlay */}
+            <div className="card bg-gradient-to-br from-holi-blue/5 to-white border-holi-blue/10 p-5 overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                         <Users className="w-5 h-5 text-holi-blue" />
                         <h2 className="font-subheading font-bold">Total Équipe</h2>
                     </div>
                     <span className="text-sm font-bold bg-holi-blue/10 text-holi-blue px-2.5 py-0.5 rounded-full ring-1 ring-holi-blue/20">
-                        {summary?.totals} / {summary?.objectiveTotal}
+                        {teamScore} / {objective}
                     </span>
                 </div>
 
                 <div className="relative h-4 bg-black/5 rounded-full overflow-hidden shadow-inner border border-black/5">
+                    {/* Team Progress */}
                     <div
-                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-holi-orange to-holi-red transition-all duration-1000 ease-out"
-                        style={{ width: `${Math.min(summary?.objectiveProgress || 0, 100)}%` }}
+                        className="absolute top-0 left-0 h-full bg-neutral-200 transition-all duration-1000 ease-out"
+                        style={{ width: `${Math.min((teamScore / objective) * 100, 100)}%` }}
+                    />
+                    {/* Personal Contribution Overlay */}
+                    <div
+                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-[#0079ed] to-[#4DADDF] transition-all duration-1000 ease-out z-10 opacity-90 shadow-[0_0_10px_rgba(0,121,237,0.3)]"
+                        style={{ width: `${Math.min((personalScore / objective) * 100, 100)}%` }}
+                    />
+
+                    {/* Team Overflow (if team > personal) */}
+                    <div
+                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-[#FF914D] to-holi-red transition-all duration-1200 ease-out"
+                        style={{
+                            width: `${Math.min(((teamScore - personalScore) / objective) * 100, 100)}%`,
+                            left: `${Math.min((personalScore / objective) * 100, 100)}%`
+                        }}
                     />
                 </div>
+                <p className="text-[9px] font-black text-holi-blue/60 mt-2 uppercase tracking-tight">
+                    Ta contribution : {personalScore} RDV ({Math.round((personalScore / teamScore) * 100 || 0)}%)
+                </p>
             </div>
 
             {/* Main Claim Button Area */}
             <div className="flex-1 flex flex-col items-center justify-center gap-8 py-8">
                 <div className="text-center space-y-2">
                     <p className="text-holi-grey/60 uppercase tracking-[0.3em] font-black text-[10px]">Appuie pour déclarer</p>
-                    <p className="text-3xl font-heading font-black text-holi-navy italic tracking-tighter uppercase">Probe Qualifié</p>
+                    <p className="text-3xl font-heading font-black text-holi-navy italic tracking-tighter uppercase">RDV Qualifié</p>
                 </div>
 
-                <div className="relative">
-                    {/* Decorative rings */}
+                <div className="relative" ref={buttonRef}>
                     <div className={cn(
                         "absolute -inset-4 bg-holi-orange/10 rounded-full animate-pulse transition-opacity duration-500",
                         claiming ? "opacity-0" : "opacity-100"
@@ -163,7 +282,7 @@ export default function RoomPage() {
                         onClick={handleClaim}
                         disabled={claiming || summary?.status !== "OPEN"}
                         className={cn(
-                            "relative w-48 h-48 rounded-full flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-2xl overflow-hidden",
+                            "relative w-48 h-48 rounded-full flex flex-col items-center justify-center gap-1 transition-all active:scale-90 shadow-2xl overflow-hidden",
                             summary?.status === "OPEN"
                                 ? "bg-gradient-to-b from-holi-orange to-holi-red shadow-holi-orange/40 text-white cursor-pointer"
                                 : "bg-neutral-200 shadow-none text-neutral-400 cursor-not-allowed"
@@ -172,7 +291,6 @@ export default function RoomPage() {
                         <PlusCircle className={cn("w-16 h-16", claiming && "animate-spin")} />
                         <span className="font-heading font-black text-xl tracking-tighter uppercase">Boom !</span>
 
-                        {/* Gleam effect */}
                         <div className="absolute top-0 -left-full w-full h-full bg-white/30 -skew-x-[45deg] animate-[shimmer_3s_infinite]" />
                     </button>
                 </div>
@@ -191,12 +309,12 @@ export default function RoomPage() {
                 </div>
             </div>
 
-            {/* Leaderboard Section (Scrollable) */}
+            {/* Leaderboard Section */}
             <div className="card p-0 overflow-hidden shadow-lg border-holi-navy/5">
                 <div className="p-4 bg-holi-navy/[0.02] flex items-center justify-between border-b border-black/5">
                     <div className="flex items-center gap-2">
                         <Trophy className="w-5 h-5 text-holi-yellow" />
-                        <h3 className="font-heading font-black uppercase tracking-wider text-sm text-holi-navy">Leaderboard Probes</h3>
+                        <h3 className="font-heading font-black uppercase tracking-wider text-sm text-holi-navy">Leaderboard RDVs</h3>
                     </div>
                     <p className="text-[10px] text-holi-grey font-bold">Total : {formatCents(summary?.businessTotalCents || 0)}</p>
                 </div>
@@ -204,22 +322,34 @@ export default function RoomPage() {
                 <div className="divide-y divide-black/5">
                     {summary?.leaderboard?.map((p: any, idx: number) => (
                         <div key={p.id} className={cn(
-                            "flex items-center justify-between p-4",
+                            "flex flex-col p-4",
                             p.id === participant?.id && "bg-holi-orange/5"
                         )}>
-                            <div className="flex items-center gap-4">
-                                <span className={cn(
-                                    "w-6 text-center font-black text-sm",
-                                    idx === 0 ? "text-holi-yellow" : idx === 1 ? "text-holi-grey" : idx === 2 ? "text-holi-red" : "text-black/20"
-                                )}>
-                                    {idx + 1}
-                                </span>
-                                <span className={cn("font-bold", p.id === participant?.id ? "text-holi-orange" : "text-holi-navy")}>
-                                    {p.displayName} {p.id === participant?.id && "(Moi)"}
-                                </span>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-4">
+                                    <span className={cn(
+                                        "w-6 text-center font-black text-sm",
+                                        idx === 0 ? "text-holi-yellow" : idx === 1 ? "text-holi-grey" : idx === 2 ? "text-holi-red" : "text-black/20"
+                                    )}>
+                                        {idx + 1}
+                                    </span>
+                                    <span className={cn("font-bold", p.id === participant?.id ? "text-holi-orange" : "text-holi-navy")}>
+                                        {p.displayName} {p.id === participant?.id && "(Moi)"}
+                                    </span>
+                                </div>
+                                <div className="text-right">
+                                    <p className="font-black text-holi-dark">{p.score} <span className="text-[10px] text-holi-grey font-bold uppercase">RDV</span></p>
+                                </div>
                             </div>
-                            <div className="text-right">
-                                <p className="font-black text-holi-dark">{p.score} <span className="text-[10px] text-holi-grey font-bold">RDV</span></p>
+                            {/* Mini Progress Bar for each user */}
+                            <div className="ml-10 h-1 bg-black/5 rounded-full overflow-hidden">
+                                <div
+                                    className={cn(
+                                        "h-full transition-all duration-1000",
+                                        idx === 0 ? "bg-holi-orange" : "bg-holi-blue"
+                                    )}
+                                    style={{ width: `${Math.min((p.score / objective) * 100, 100)}%` }}
+                                />
                             </div>
                         </div>
                     ))}
@@ -238,6 +368,18 @@ export default function RoomPage() {
                     <p className="text-xl font-black text-holi-orange">{summary?.totals}</p>
                 </div>
             </div>
+
+            <style jsx global>{`
+                @keyframes shake-short {
+                    0%, 100% { transform: translate(0, 0); }
+                    25% { transform: translate(-2px, 2px); }
+                    50% { transform: translate(2px, -2px); }
+                    75% { transform: translate(-2px, -2px); }
+                }
+                .animate-shake-short {
+                    animation: shake-short 0.2s ease-in-out;
+                }
+            `}</style>
         </div>
     );
 }
