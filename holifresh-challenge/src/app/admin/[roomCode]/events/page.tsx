@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
     ArrowLeft,
     Download,
@@ -11,14 +11,16 @@ import {
     User,
     CheckCircle2,
     XCircle,
-    Hash
+    X,
+    AlertTriangle,
+    MessageSquare
 } from "lucide-react";
 import Link from "next/link";
 import { formatCents, cn } from "@/lib/utils";
 
 export default function AdminEventsPage() {
     const { roomCode } = useParams();
-    const roomId = roomCode; // Keep roomId variable for internal consistency if needed or replace it
+    const roomId = roomCode;
     const [events, setEvents] = useState<any[]>([]);
     const [summary, setSummary] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -26,6 +28,11 @@ export default function AdminEventsPage() {
     // Rename modal state
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [newName, setNewName] = useState("");
+
+    // Cancel modal state
+    const [cancellingClaim, setCancellingClaim] = useState<any | null>(null);
+    const [cancelReason, setCancelReason] = useState("");
+    const [cancelLoading, setCancelLoading] = useState(false);
 
     async function fetchData() {
         try {
@@ -47,19 +54,28 @@ export default function AdminEventsPage() {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 2000); // 2s refresh for admin
+        const interval = setInterval(fetchData, 2000);
         return () => clearInterval(interval);
     }, [roomId]);
 
-    async function cancelClaim(claimId: string) {
-        if (!confirm("Voulez-vous vraiment annuler ce RDV ?")) return;
+    async function confirmCancel() {
+        if (!cancellingClaim || !cancelReason.trim()) return;
+        setCancelLoading(true);
         try {
-            const res = await fetch(`/api/rooms/${roomId}/claims/${claimId}/cancel`, {
+            const res = await fetch(`/api/rooms/${roomId}/claims/${cancellingClaim.id}/cancel`, {
                 method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reason: cancelReason.trim() }),
             });
-            if (res.ok) fetchData();
+            if (res.ok) {
+                fetchData();
+                setCancellingClaim(null);
+                setCancelReason("");
+            }
         } catch (err) {
             console.error(err);
+        } finally {
+            setCancelLoading(false);
         }
     }
 
@@ -174,30 +190,40 @@ export default function AdminEventsPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className={cn(
-                                                    "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                                                    event.status === "VALID" ? "bg-accent/10 text-accent" : "bg-danger/10 text-danger"
-                                                )}>
-                                                    {event.status === "VALID" ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                                                    {event.status}
-                                                </span>
+                                                <div className="space-y-1">
+                                                    <span className={cn(
+                                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase",
+                                                        event.status === "VALID" ? "bg-accent/10 text-accent" : "bg-danger/10 text-danger"
+                                                    )}>
+                                                        {event.status === "VALID" ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                                                        {event.status}
+                                                    </span>
+                                                    {event.status === "CANCELLED" && event.cancelReason && (
+                                                        <div className="flex items-start gap-1.5 text-[11px] text-neutral-400 italic max-w-[250px]">
+                                                            <MessageSquare className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                                            <span className="line-clamp-2">{event.cancelReason}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="flex items-center justify-end gap-1">
                                                     <button
                                                         onClick={() => renameParticipant(event.participant.id, event.participant.displayName)}
-                                                        className="p-2 hover:bg-white/10 rounded-lg text-neutral-400 hover:text-white transition-colors"
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-neutral-400 hover:text-holi-blue hover:bg-holi-blue/10 transition-all"
                                                         title="Renommer participant"
                                                     >
-                                                        <UserRoundPen className="w-4 h-4" />
+                                                        <UserRoundPen className="w-3.5 h-3.5" />
+                                                        <span className="hidden sm:inline">Renommer</span>
                                                     </button>
                                                     {event.status === "VALID" && (
                                                         <button
-                                                            onClick={() => cancelClaim(event.id)}
-                                                            className="p-2 hover:bg-danger/10 rounded-lg text-neutral-400 hover:text-danger transition-colors"
+                                                            onClick={() => { setCancellingClaim(event); setCancelReason(""); }}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all"
                                                             title="Annuler le RDV"
                                                         >
-                                                            <RotateCcw className="w-4 h-4" />
+                                                            <XCircle className="w-3.5 h-3.5" />
+                                                            <span className="hidden sm:inline">Annuler</span>
                                                         </button>
                                                     )}
                                                 </div>
@@ -210,6 +236,83 @@ export default function AdminEventsPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Cancel Confirmation Modal */}
+            {cancellingClaim && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setCancellingClaim(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-float" onClick={(e) => e.stopPropagation()}>
+                        {/* Icon */}
+                        <div className="flex justify-center">
+                            <div className="p-4 bg-red-50 rounded-full">
+                                <XCircle className="w-8 h-8 text-red-500" />
+                            </div>
+                        </div>
+
+                        {/* Title & Context */}
+                        <div className="text-center space-y-2">
+                            <h3 className="text-xl font-heading font-black text-red-600 uppercase italic">
+                                Annuler ce RDV
+                            </h3>
+                            <p className="text-holi-grey text-sm font-medium">
+                                RDV déclaré par <span className="font-bold text-holi-dark">{cancellingClaim.participant.displayName}</span> à{" "}
+                                <span className="font-bold text-holi-dark">
+                                    {new Date(cancellingClaim.createdAt).toLocaleTimeString("fr-FR", {
+                                        hour: "2-digit", minute: "2-digit"
+                                    })}
+                                </span>
+                            </p>
+                        </div>
+
+                        {/* Warning */}
+                        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs font-bold text-red-600">
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            Le RDV sera retiré du compteur et du leaderboard.
+                        </div>
+
+                        {/* Reason Field */}
+                        <div>
+                            <label className="text-xs font-black uppercase text-holi-grey mb-1.5 block">
+                                Raison de l&apos;annulation <span className="text-red-400">*</span>
+                            </label>
+                            <textarea
+                                className="input-field resize-none text-sm"
+                                rows={3}
+                                placeholder="ex: Doublon, erreur de saisie, faux RDV..."
+                                value={cancelReason}
+                                onChange={(e) => setCancelReason(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+
+                        {/* Buttons */}
+                        <div className="flex items-center gap-3 pt-1">
+                            <button
+                                onClick={confirmCancel}
+                                disabled={cancelLoading || !cancelReason.trim()}
+                                className={cn(
+                                    "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-black uppercase transition-all",
+                                    cancelReason.trim()
+                                        ? "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-200"
+                                        : "bg-neutral-200 text-neutral-400 cursor-not-allowed"
+                                )}
+                            >
+                                {cancelLoading ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <XCircle className="w-4 h-4" />
+                                )}
+                                Confirmer l&apos;annulation
+                            </button>
+                            <button
+                                onClick={() => setCancellingClaim(null)}
+                                className="flex-1 btn-ghost text-sm font-black uppercase"
+                            >
+                                Retour
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
