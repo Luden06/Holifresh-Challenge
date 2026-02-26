@@ -23,6 +23,18 @@ export default function AdminPage() {
 
     const router = useRouter();
 
+    async function fetchRooms() {
+        try {
+            const res = await fetch("/api/rooms");
+            if (res.ok) {
+                const data = await res.json();
+                setRooms(data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch rooms:", err);
+        }
+    }
+
     async function handleLogin(e: React.FormEvent) {
         e.preventDefault();
         setLoading(true);
@@ -36,7 +48,7 @@ export default function AdminPage() {
 
             if (res.ok) {
                 setIsLoggedIn(true);
-                // In a real app, you'd fetch existing rooms here
+                fetchRooms();
             } else {
                 setError("Code administrateur invalide");
             }
