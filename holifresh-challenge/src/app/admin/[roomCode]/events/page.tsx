@@ -26,8 +26,9 @@ export default function AdminEventsPage() {
     const [loading, setLoading] = useState(true);
 
     // Rename modal state
-    const [renamingId, setRenamingId] = useState<string | null>(null);
+    const [renamingParticipant, setRenamingParticipant] = useState<{ id: string, name: string } | null>(null);
     const [newName, setNewName] = useState("");
+    const [renameLoading, setRenameLoading] = useState(false);
 
     // Cancel modal state
     const [cancellingClaim, setCancellingClaim] = useState<any | null>(null);
@@ -79,18 +80,28 @@ export default function AdminEventsPage() {
         }
     }
 
-    async function renameParticipant(participantId: string, oldName: string) {
-        const name = prompt("Nouveau nom pour ce participant :", oldName);
-        if (!name || name === oldName) return;
+    function openRename(participantId: string, displayName: string) {
+        setRenamingParticipant({ id: participantId, name: displayName });
+        setNewName(displayName);
+    }
 
+    async function confirmRename() {
+        if (!renamingParticipant || !newName.trim() || newName.trim() === renamingParticipant.name) return;
+        setRenameLoading(true);
         try {
-            const res = await fetch(`/api/rooms/${roomId}/participants/${participantId}/rename`, {
+            const res = await fetch(`/api/rooms/${roomId}/participants/${renamingParticipant.id}/rename`, {
                 method: "POST",
-                body: JSON.stringify({ displayName: name }),
+                body: JSON.stringify({ displayName: newName.trim() }),
             });
-            if (res.ok) fetchData();
+            if (res.ok) {
+                fetchData();
+                setRenamingParticipant(null);
+                setNewName("");
+            }
         } catch (err) {
             console.error(err);
+        } finally {
+            setRenameLoading(false);
         }
     }
 
@@ -216,7 +227,7 @@ export default function AdminEventsPage() {
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-1">
                                                     <button
-                                                        onClick={() => renameParticipant(event.participant.id, event.participant.displayName)}
+                                                        onClick={() => openRename(event.participant.id, event.participant.displayName)}
                                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-neutral-400 hover:text-holi-blue hover:bg-holi-blue/10 transition-all"
                                                         title="Renommer participant"
                                                     >
@@ -243,6 +254,72 @@ export default function AdminEventsPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Rename Modal */}
+            {renamingParticipant && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setRenamingParticipant(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-float" onClick={(e) => e.stopPropagation()}>
+                        {/* Icon */}
+                        <div className="flex justify-center">
+                            <div className="p-4 bg-holi-blue/10 rounded-full">
+                                <UserRoundPen className="w-8 h-8 text-holi-blue" />
+                            </div>
+                        </div>
+
+                        {/* Title */}
+                        <div className="text-center space-y-2">
+                            <h3 className="text-xl font-heading font-black text-holi-dark uppercase italic">
+                                Renommer le participant
+                            </h3>
+                            <p className="text-holi-grey text-sm font-medium">
+                                Nom actuel : <span className="font-bold text-holi-dark">{renamingParticipant.name}</span>
+                            </p>
+                        </div>
+
+                        {/* Name Input */}
+                        <div>
+                            <label className="text-xs font-black uppercase text-holi-grey mb-1.5 block">
+                                Nouveau nom
+                            </label>
+                            <input
+                                type="text"
+                                className="input-field text-sm font-bold"
+                                value={newName}
+                                onChange={(e) => setNewName(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && confirmRename()}
+                                autoFocus
+                            />
+                        </div>
+
+                        {/* Buttons */}
+                        <div className="flex items-center gap-3 pt-1">
+                            <button
+                                onClick={confirmRename}
+                                disabled={renameLoading || !newName.trim() || newName.trim() === renamingParticipant.name}
+                                className={cn(
+                                    "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-black uppercase transition-all",
+                                    newName.trim() && newName.trim() !== renamingParticipant.name
+                                        ? "bg-holi-blue hover:bg-holi-blue/90 text-white shadow-lg shadow-holi-blue/20"
+                                        : "bg-neutral-200 text-neutral-400 cursor-not-allowed"
+                                )}
+                            >
+                                {renameLoading ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <UserRoundPen className="w-4 h-4" />
+                                )}
+                                Renommer
+                            </button>
+                            <button
+                                onClick={() => setRenamingParticipant(null)}
+                                className="flex-1 btn-ghost text-sm font-black uppercase"
+                            >
+                                Annuler
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Cancel Confirmation Modal */}
             {cancellingClaim && (
