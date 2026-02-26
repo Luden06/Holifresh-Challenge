@@ -55,6 +55,26 @@ export async function GET(
             businessCents: p._count.claims * room.rdvValueCents,
         }));
 
+        // Optionally fetch participant's own claims for "Mes RDV" section
+        const { searchParams } = new URL(request.url);
+        const participantId = searchParams.get("participantId");
+        let myClaims: any[] = [];
+
+        if (participantId) {
+            myClaims = await prisma.claim.findMany({
+                where: { roomId, participantId },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+                select: {
+                    id: true,
+                    createdAt: true,
+                    status: true,
+                    cancelReason: true,
+                    cancelledBy: true,
+                },
+            });
+        }
+
         return NextResponse.json({
             roomName: room.name,
             status: room.status,
@@ -66,6 +86,7 @@ export async function GET(
             signaturesGoal: room.signaturesGoal,
             rdvValueCents: room.rdvValueCents,
             lastEventAt: new Date().toISOString(),
+            myClaims,
         });
     } catch (error) {
         console.error("Summary API error:", error);

@@ -191,13 +191,20 @@ export default function AdminEventsPage() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="space-y-1">
-                                                    <span className={cn(
-                                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                                                        event.status === "VALID" ? "bg-accent/10 text-accent" : "bg-danger/10 text-danger"
-                                                    )}>
-                                                        {event.status === "VALID" ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                                                        {event.status}
-                                                    </span>
+                                                    {event.status === "VALID" ? (
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase bg-accent/10 text-accent">
+                                                            <CheckCircle2 className="w-3 h-3" />
+                                                            VALID
+                                                        </span>
+                                                    ) : (
+                                                        <span className={cn(
+                                                            "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase",
+                                                            event.cancelledBy === "self" ? "bg-holi-blue/10 text-holi-blue" : "bg-danger/10 text-danger"
+                                                        )}>
+                                                            <XCircle className="w-3 h-3" />
+                                                            {event.cancelledBy === "self" ? "AUTO-ANNULÉ" : "ANNULÉ (ADMIN)"}
+                                                        </span>
+                                                    )}
                                                     {event.status === "CANCELLED" && event.cancelReason && (
                                                         <div className="flex items-start gap-1.5 text-[11px] text-neutral-400 italic max-w-[250px]">
                                                             <MessageSquare className="w-3 h-3 flex-shrink-0 mt-0.5" />

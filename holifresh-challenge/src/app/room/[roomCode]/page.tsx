@@ -11,7 +11,12 @@ import {
     PlusCircle,
     TrendingUp,
     User as UserIcon,
-    CalendarCheck
+    CalendarCheck,
+    XCircle,
+    Flame,
+    Clock,
+    MessageSquare,
+    AlertTriangle
 } from "lucide-react";
 import { formatCents, cn } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
@@ -58,6 +63,9 @@ class Particle {
     }
 }
 
+const RAPID_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
+const SELF_CANCEL_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+
 export default function RoomPage() {
     const { roomCode } = useParams();
     const router = useRouter();
@@ -68,6 +76,17 @@ export default function RoomPage() {
     const [claiming, setClaiming] = useState(false);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
+    // Double Kill modal
+    const [rapidWarning, setRapidWarning] = useState<{ claimId: string } | null>(null);
+
+    // Self-cancel modal
+    const [selfCancelling, setSelfCancelling] = useState<any | null>(null);
+    const [selfCancelReason, setSelfCancelReason] = useState("");
+    const [selfCancelLoading, setSelfCancelLoading] = useState(false);
+
+    // "Mes RDV" section
+    const [showMyClaims, setShowMyClaims] = useState(false);
+
     // Animation refs
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const particlesRef = useRef<Particle[]>([]);
@@ -75,8 +94,9 @@ export default function RoomPage() {
     const buttonRef = useRef<HTMLDivElement>(null);
 
     const fetchSummary = useCallback(async () => {
+        if (!participant) return;
         try {
-            const res = await fetch(`/api/rooms/${roomCode}/summary`);
+            const res = await fetch(`/api/rooms/${roomCode}/summary?participantId=${participant.id}`);
             if (res.ok) {
                 setSummary(await res.json());
             }
@@ -85,7 +105,7 @@ export default function RoomPage() {
         } finally {
             setLoading(false);
         }
-    }, [roomCode]);
+    }, [roomCode, participant]);
 
     useEffect(() => {
         const token = localStorage.getItem(`room_${roomCode}_token`);
@@ -98,8 +118,12 @@ export default function RoomPage() {
         }
 
         setParticipant({ id, name, token });
-        fetchSummary();
+    }, [roomCode, router]);
 
+    useEffect(() => {
+        if (!participant) return;
+
+        fetchSummary();
         const interval = setInterval(fetchSummary, 5000);
 
         // Animation loop
@@ -122,7 +146,7 @@ export default function RoomPage() {
             clearInterval(interval);
             if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         };
-    }, [roomCode, router, fetchSummary]);
+    }, [participant, fetchSummary]);
 
     const triggerBurst = () => {
         const canvas = canvasRef.current;
@@ -163,12 +187,16 @@ export default function RoomPage() {
             });
 
             if (res.ok) {
-                // SUCCESS: Trigger animation and hold for 3s (cooldown)
+                const data = await res.json();
                 triggerBurst();
                 setFeedback({ type: 'success', message: "+1 RDV Validé !" });
                 fetchSummary();
 
-                // Clear feedback and release claiming status after 3 seconds (align with server COOLDOWN_MS)
+                // Check for rapid declaration (< 2 min since last)
+                if (data.timeSinceLastClaim !== null && data.timeSinceLastClaim < RAPID_THRESHOLD_MS) {
+                    setRapidWarning({ claimId: data.claimId });
+                }
+
                 setTimeout(() => {
                     setFeedback(null);
                     setClaiming(false);
@@ -176,12 +204,53 @@ export default function RoomPage() {
             } else {
                 const err = await res.json();
                 setFeedback({ type: 'error', message: err.error || "Une erreur est survenue" });
-                // If error (like 429), allow retrying immediately in case the 3s passed on server but client state didn't refresh
                 setClaiming(false);
             }
         } catch (err) {
             setFeedback({ type: 'error', message: "Impossible de valider le RDV" });
             setClaiming(false);
+        }
+    }
+
+    async function handleRapidCancel() {
+        if (!rapidWarning || !participant) return;
+        try {
+            await fetch(`/api/rooms/${roomCode}/claims/${rapidWarning.claimId}/cancel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    participantToken: participant.token,
+                    reason: "Déclaration rapide annulée par le participant",
+                }),
+            });
+            fetchSummary();
+        } catch (err) {
+            console.error(err);
+        }
+        setRapidWarning(null);
+    }
+
+    async function confirmSelfCancel() {
+        if (!selfCancelling || !selfCancelReason.trim() || !participant) return;
+        setSelfCancelLoading(true);
+        try {
+            const res = await fetch(`/api/rooms/${roomCode}/claims/${selfCancelling.id}/cancel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    participantToken: participant.token,
+                    reason: selfCancelReason.trim(),
+                }),
+            });
+            if (res.ok) {
+                fetchSummary();
+                setSelfCancelling(null);
+                setSelfCancelReason("");
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setSelfCancelLoading(false);
         }
     }
 
@@ -197,6 +266,7 @@ export default function RoomPage() {
     const personalScore = personalStats?.score || 0;
     const teamScore = summary?.totals || 0;
     const objective = summary?.objectiveTotal || 50;
+    const myClaims = summary?.myClaims || [];
 
     return (
         <div className="max-w-4xl mx-auto p-4 flex flex-col min-h-screen gap-6 pb-24 md:pb-8 relative">
@@ -250,7 +320,6 @@ export default function RoomPage() {
                         className="absolute top-0 left-0 h-full bg-gradient-to-r from-[#0079ed] to-[#4DADDF] transition-all duration-1000 ease-out z-10 opacity-90 shadow-[0_0_10px_rgba(0,121,237,0.3)]"
                         style={{ width: `${Math.min((personalScore / objective) * 100, 100)}%` }}
                     />
-
                     {/* Team Overflow (if team > personal) */}
                     <div
                         className="absolute top-0 left-0 h-full bg-gradient-to-r from-[#FF914D] to-holi-red transition-all duration-1200 ease-out"
@@ -356,6 +425,63 @@ export default function RoomPage() {
                 </div>
             </div>
 
+            {/* Mes RDV Section */}
+            {myClaims.length > 0 && (
+                <div className="card p-0 overflow-hidden shadow-lg border-holi-navy/5">
+                    <button
+                        onClick={() => setShowMyClaims(!showMyClaims)}
+                        className="w-full p-4 bg-holi-navy/[0.02] flex items-center justify-between border-b border-black/5 hover:bg-holi-navy/[0.04] transition-colors"
+                    >
+                        <div className="flex items-center gap-2">
+                            <CalendarCheck className="w-5 h-5 text-holi-orange" />
+                            <h3 className="font-heading font-black uppercase tracking-wider text-sm text-holi-navy">Mes RDV ({myClaims.filter((c: any) => c.status === 'VALID').length})</h3>
+                        </div>
+                        <span className="text-xs text-holi-grey font-bold">{showMyClaims ? "Masquer ▲" : "Voir ▼"}</span>
+                    </button>
+
+                    {showMyClaims && (
+                        <div className="divide-y divide-black/5">
+                            {myClaims.map((claim: any) => {
+                                const elapsed = Date.now() - new Date(claim.createdAt).getTime();
+                                const canSelfCancel = claim.status === 'VALID' && elapsed < SELF_CANCEL_WINDOW_MS;
+                                const remainingMin = Math.max(0, Math.ceil((SELF_CANCEL_WINDOW_MS - elapsed) / 60000));
+
+                                return (
+                                    <div key={claim.id} className="flex items-center justify-between px-4 py-3">
+                                        <div className="flex items-center gap-3">
+                                            <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                                            <span className="text-sm font-medium">
+                                                {new Date(claim.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                                            </span>
+                                            <span className={cn(
+                                                "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
+                                                claim.status === "VALID" ? "bg-accent/10 text-accent" : "bg-danger/10 text-danger"
+                                            )}>
+                                                {claim.status === "VALID" ? "✓ Validé" : "✗ Annulé"}
+                                            </span>
+                                            {claim.status === "CANCELLED" && claim.cancelReason && (
+                                                <span className="text-[11px] text-neutral-400 italic flex items-center gap-1">
+                                                    <MessageSquare className="w-3 h-3" /> {claim.cancelReason}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {canSelfCancel && (
+                                            <button
+                                                onClick={() => { setSelfCancelling(claim); setSelfCancelReason(""); }}
+                                                className="text-xs font-bold text-red-400 hover:text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-transparent hover:border-red-200 transition-all flex items-center gap-1"
+                                            >
+                                                <XCircle className="w-3.5 h-3.5" />
+                                                Retirer ({remainingMin}min)
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Absolute Bottom Counter Mobile */}
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t border-black/5 flex items-center justify-around md:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
                 <div className="text-center">
@@ -368,6 +494,113 @@ export default function RoomPage() {
                     <p className="text-xl font-black text-holi-orange">{summary?.totals}</p>
                 </div>
             </div>
+
+            {/* ═══════ RAPID DECLARATION WARNING ("Double Kill") ═══════ */}
+            {rapidWarning && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setRapidWarning(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-float" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-center">
+                            <div className="p-4 bg-orange-50 rounded-full">
+                                <Flame className="w-10 h-10 text-holi-orange animate-pulse" />
+                            </div>
+                        </div>
+
+                        <div className="text-center space-y-2">
+                            <h3 className="text-2xl font-heading font-black text-holi-orange uppercase italic">
+                                🔥 Double Kill !
+                            </h3>
+                            <p className="text-holi-grey text-sm font-medium leading-relaxed">
+                                Vous avez déclaré <span className="font-bold text-holi-dark">2 RDV en moins de 2 minutes</span>.<br />
+                                C&apos;est soit une belle performance, un oubli, ou une erreur.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-3 pt-1">
+                            <button
+                                onClick={() => setRapidWarning(null)}
+                                className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl text-sm font-black uppercase bg-gradient-to-r from-holi-orange to-holi-red text-white shadow-lg shadow-holi-orange/30 transition-all hover:shadow-xl hover:shadow-holi-orange/40 active:scale-95"
+                            >
+                                <Flame className="w-5 h-5" />
+                                Oui, je suis en feu ! 🔥
+                            </button>
+                            <button
+                                onClick={handleRapidCancel}
+                                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold uppercase border-2 border-neutral-200 text-neutral-500 hover:border-red-200 hover:text-red-500 hover:bg-red-50 transition-all"
+                            >
+                                <XCircle className="w-4 h-4" />
+                                Oups, c&apos;est une erreur — Annuler le dernier
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════ SELF-CANCEL MODAL ═══════ */}
+            {selfCancelling && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelfCancelling(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-float" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-center">
+                            <div className="p-4 bg-red-50 rounded-full">
+                                <XCircle className="w-8 h-8 text-red-500" />
+                            </div>
+                        </div>
+
+                        <div className="text-center space-y-2">
+                            <h3 className="text-xl font-heading font-black text-red-600 uppercase italic">Retirer ce RDV</h3>
+                            <p className="text-holi-grey text-sm font-medium">
+                                RDV déclaré à <span className="font-bold text-holi-dark">
+                                    {new Date(selfCancelling.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                            </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs font-bold text-red-600">
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            Le RDV sera retiré du compteur et du leaderboard.
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-black uppercase text-holi-grey mb-1.5 block">
+                                Raison <span className="text-red-400">*</span>
+                            </label>
+                            <textarea
+                                className="input-field resize-none text-sm"
+                                rows={2}
+                                placeholder="ex: Doublon, erreur de saisie..."
+                                value={selfCancelReason}
+                                onChange={(e) => setSelfCancelReason(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-1">
+                            <button
+                                onClick={confirmSelfCancel}
+                                disabled={selfCancelLoading || !selfCancelReason.trim()}
+                                className={cn(
+                                    "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-black uppercase transition-all",
+                                    selfCancelReason.trim()
+                                        ? "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-200"
+                                        : "bg-neutral-200 text-neutral-400 cursor-not-allowed"
+                                )}
+                            >
+                                {selfCancelLoading ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <XCircle className="w-4 h-4" />
+                                )}
+                                Confirmer
+                            </button>
+                            <button
+                                onClick={() => setSelfCancelling(null)}
+                                className="flex-1 btn-ghost text-sm font-black uppercase"
+                            >
+                                Retour
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style jsx global>{`
                 @keyframes shake-short {

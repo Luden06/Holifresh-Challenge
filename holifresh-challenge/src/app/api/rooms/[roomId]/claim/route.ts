@@ -76,7 +76,12 @@ export async function POST(
             }),
         ]);
 
-        return NextResponse.json({ success: true, claimId });
+        // Calculate time since last claim for rapid-declaration detection
+        const timeSinceLastClaim = participant.lastClaimAt
+            ? now.getTime() - new Date(participant.lastClaimAt).getTime()
+            : null;
+
+        return NextResponse.json({ success: true, claimId, timeSinceLastClaim });
     } catch (error) {
         console.error("Claim error:", error);
         return NextResponse.json({ error: "Failed to record claim" }, { status: 500 });
