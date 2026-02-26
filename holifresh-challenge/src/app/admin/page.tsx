@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, Plus, DoorOpen, DoorClosed, Link as LinkIcon, ExternalLink } from "lucide-react";
+import { Lock, Plus, DoorOpen, DoorClosed, Link as LinkIcon, ExternalLink, Pencil, Archive, X, Check, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { formatCents } from "@/lib/utils";
 
@@ -11,8 +11,10 @@ export default function AdminPage() {
     const [adminCode, setAdminCode] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [showArchived, setShowArchived] = useState(false);
 
     const [rooms, setRooms] = useState<any[]>([]);
+    const [editingRoom, setEditingRoom] = useState<any | null>(null);
     const [newRoom, setNewRoom] = useState({
         name: "",
         objectiveTotal: "50",
@@ -93,6 +95,50 @@ export default function AdminPage() {
         }
     }
 
+    async function saveEdit() {
+        if (!editingRoom) return;
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/rooms/${editingRoom.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: editingRoom.name,
+                    objectiveTotal: editingRoom.objectiveTotal,
+                    rdvValueCents: editingRoom.rdvValueCents,
+                    signaturesGoal: editingRoom.signaturesGoal,
+                    joinCode: editingRoom.joinCode,
+                }),
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                setRooms(rooms.map(r => r.id === updated.id ? updated : r));
+                setEditingRoom(null);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function archiveRoom(roomId: string) {
+        if (!confirm("Archiver cette room ? Elle ne sera plus visible par défaut.")) return;
+        try {
+            const res = await fetch(`/api/rooms/${roomId}`, { method: "DELETE" });
+            if (res.ok) {
+                const updated = await res.json();
+                setRooms(rooms.map(r => r.id === roomId ? updated : r));
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    const activeRooms = rooms.filter(r => r.status !== "ARCHIVED");
+    const archivedRooms = rooms.filter(r => r.status === "ARCHIVED");
+    const displayedRooms = showArchived ? rooms : activeRooms;
+
     if (!isLoggedIn) {
         return (
             <div className="flex items-center justify-center min-h-screen p-4">
@@ -147,7 +193,7 @@ export default function AdminPage() {
                         </h2>
                         <form onSubmit={createRoom} className="space-y-4">
                             <div>
-                                <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Nom de l'événement</label>
+                                <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Nom de l&apos;événement</label>
                                 <input
                                     type="text"
                                     placeholder="ex: Kickoff Q1 2026"
@@ -216,17 +262,31 @@ export default function AdminPage() {
 
                 {/* Rooms List */}
                 <div className="lg:col-span-2 space-y-4">
-                    <h2 className="text-xl font-heading font-black flex items-center gap-2 px-2 text-holi-navy uppercase italic">
-                        Rooms Actives
-                    </h2>
+                    <div className="flex items-center justify-between px-2">
+                        <h2 className="text-xl font-heading font-black flex items-center gap-2 text-holi-navy uppercase italic">
+                            Rooms {showArchived ? "(Toutes)" : "Actives"}
+                        </h2>
+                        {archivedRooms.length > 0 && (
+                            <button
+                                onClick={() => setShowArchived(!showArchived)}
+                                className="flex items-center gap-1.5 text-xs font-bold text-holi-grey hover:text-holi-orange transition-colors"
+                            >
+                                {showArchived ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                {showArchived ? "Masquer archivées" : `Voir archivées (${archivedRooms.length})`}
+                            </button>
+                        )}
+                    </div>
 
-                    {rooms.length === 0 ? (
+                    {displayedRooms.length === 0 ? (
                         <div className="card text-center py-12 text-neutral-500">
                             Aucune room créée pour le moment.
                         </div>
                     ) : (
-                        rooms.map((room) => (
-                            <div key={room.id} className="card hover:border-white/20 transition-all">
+                        displayedRooms.map((room) => (
+                            <div key={room.id} className={cn(
+                                "card hover:border-white/20 transition-all",
+                                room.status === "ARCHIVED" && "opacity-50"
+                            )}>
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
                                         <div className="flex items-center gap-3 mb-1">
@@ -235,7 +295,8 @@ export default function AdminPage() {
                                                 "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider",
                                                 room.status === "OPEN" ? "bg-holi-blue/10 text-holi-blue" :
                                                     room.status === "CLOSED" ? "bg-holi-dark/10 text-holi-grey" :
-                                                        "bg-holi-orange/10 text-holi-orange"
+                                                        room.status === "ARCHIVED" ? "bg-neutral-200 text-neutral-400" :
+                                                            "bg-holi-orange/10 text-holi-orange"
                                             )}>
                                                 {room.status}
                                             </span>
@@ -251,20 +312,38 @@ export default function AdminPage() {
                                     </div>
 
                                     <div className="flex flex-wrap items-center gap-2">
-                                        {room.status === "DRAFT" || room.status === "CLOSED" ? (
-                                            <button
-                                                onClick={() => toggleRoom(room.id, 'open')}
-                                                className="btn-ghost text-xs py-2 px-4 text-holi-blue hover:bg-holi-blue/10 border-holi-blue/20 uppercase font-black"
-                                            >
-                                                <DoorOpen className="w-4 h-4" /> Ouvrir
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() => toggleRoom(room.id, 'close')}
-                                                className="btn-ghost text-xs py-2 px-4 text-holi-pink hover:bg-holi-pink/10 border-holi-pink/20 uppercase font-black"
-                                            >
-                                                <DoorClosed className="w-4 h-4" /> Fermer
-                                            </button>
+                                        {room.status !== "ARCHIVED" && (
+                                            <>
+                                                {room.status === "DRAFT" || room.status === "CLOSED" ? (
+                                                    <button
+                                                        onClick={() => toggleRoom(room.id, 'open')}
+                                                        className="btn-ghost text-xs py-2 px-4 text-holi-blue hover:bg-holi-blue/10 border-holi-blue/20 uppercase font-black"
+                                                    >
+                                                        <DoorOpen className="w-4 h-4" /> Ouvrir
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => toggleRoom(room.id, 'close')}
+                                                        className="btn-ghost text-xs py-2 px-4 text-holi-pink hover:bg-holi-pink/10 border-holi-pink/20 uppercase font-black"
+                                                    >
+                                                        <DoorClosed className="w-4 h-4" /> Fermer
+                                                    </button>
+                                                )}
+
+                                                <button
+                                                    onClick={() => setEditingRoom({ ...room })}
+                                                    className="btn-ghost text-xs py-2 px-4 text-holi-orange hover:bg-holi-orange/10 border-holi-orange/20 uppercase font-black"
+                                                >
+                                                    <Pencil className="w-4 h-4" /> Modifier
+                                                </button>
+
+                                                <button
+                                                    onClick={() => archiveRoom(room.id)}
+                                                    className="btn-ghost text-xs py-2 px-4 text-neutral-400 hover:bg-neutral-100 border-neutral-200 uppercase font-black"
+                                                >
+                                                    <Archive className="w-4 h-4" /> Archiver
+                                                </button>
+                                            </>
                                         )}
 
                                         <Link
@@ -276,7 +355,7 @@ export default function AdminPage() {
                                     </div>
                                 </div>
 
-                                {room.status !== "DRAFT" && (
+                                {room.status !== "DRAFT" && room.status !== "ARCHIVED" && (
                                     <div className="mt-6 pt-6 border-t border-black/5 grid grid-cols-1 sm:grid-cols-3 gap-4">
                                         <Link href={`/join/${room.id}`} target="_blank" className="flex items-center gap-2 text-xs font-bold text-holi-grey hover:text-holi-orange transition-colors">
                                             <LinkIcon className="w-3 h-3" /> Page Join <ExternalLink className="w-3 h-3" />
@@ -294,6 +373,90 @@ export default function AdminPage() {
                     )}
                 </div>
             </div>
+
+            {/* Edit Modal */}
+            {editingRoom && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setEditingRoom(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-heading font-black text-holi-dark uppercase italic flex items-center gap-2">
+                                <Pencil className="w-5 h-5 text-holi-orange" /> Modifier la Room
+                            </h2>
+                            <button onClick={() => setEditingRoom(null)} className="p-1 hover:bg-neutral-100 rounded-full transition">
+                                <X className="w-5 h-5 text-neutral-400" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Nom</label>
+                                <input
+                                    type="text"
+                                    className="input-field"
+                                    value={editingRoom.name}
+                                    onChange={(e) => setEditingRoom({ ...editingRoom, name: e.target.value })}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Objectif (RDV)</label>
+                                    <input
+                                        type="number"
+                                        className="input-field font-bold"
+                                        value={editingRoom.objectiveTotal}
+                                        onChange={(e) => setEditingRoom({ ...editingRoom, objectiveTotal: parseInt(e.target.value) || 0 })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Valeur RDV (€)</label>
+                                    <input
+                                        type="number"
+                                        className="input-field font-bold"
+                                        value={editingRoom.rdvValueCents / 100}
+                                        onChange={(e) => setEditingRoom({ ...editingRoom, rdvValueCents: Math.round(parseFloat(e.target.value) * 100) || 0 })}
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Objectif Signatures</label>
+                                    <input
+                                        type="number"
+                                        className="input-field font-bold"
+                                        value={editingRoom.signaturesGoal}
+                                        onChange={(e) => setEditingRoom({ ...editingRoom, signaturesGoal: parseInt(e.target.value) || 0 })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Join Code</label>
+                                    <input
+                                        type="text"
+                                        className="input-field font-mono uppercase font-black tracking-widest text-center text-holi-orange"
+                                        value={editingRoom.joinCode}
+                                        onChange={(e) => setEditingRoom({ ...editingRoom, joinCode: e.target.value.toUpperCase() })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-2">
+                            <button
+                                onClick={saveEdit}
+                                disabled={loading}
+                                className="btn-primary flex-1 flex items-center justify-center gap-2 text-sm font-black uppercase"
+                            >
+                                <Check className="w-4 h-4" /> {loading ? "Sauvegarde..." : "Sauvegarder"}
+                            </button>
+                            <button
+                                onClick={() => setEditingRoom(null)}
+                                className="btn-ghost flex-1 text-sm font-black uppercase"
+                            >
+                                Annuler
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
