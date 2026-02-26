@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Plus, DoorOpen, DoorClosed, Link as LinkIcon, ExternalLink, Pencil, Archive, X, Check, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
@@ -10,6 +10,7 @@ export default function AdminPage() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [adminCode, setAdminCode] = useState("");
     const [loading, setLoading] = useState(false);
+    const [checkingSession, setCheckingSession] = useState(true);
     const [error, setError] = useState("");
     const [showArchived, setShowArchived] = useState(false);
 
@@ -24,6 +25,25 @@ export default function AdminPage() {
     });
 
     const router = useRouter();
+
+    // Auto-login: check if admin cookie is still valid on page load
+    useEffect(() => {
+        async function checkSession() {
+            try {
+                const res = await fetch("/api/rooms");
+                if (res.ok) {
+                    const data = await res.json();
+                    setRooms(data);
+                    setIsLoggedIn(true);
+                }
+            } catch (err) {
+                // Cookie expired or not set, show login form
+            } finally {
+                setCheckingSession(false);
+            }
+        }
+        checkSession();
+    }, []);
 
     async function fetchRooms() {
         try {
@@ -138,6 +158,17 @@ export default function AdminPage() {
     const activeRooms = rooms.filter(r => r.status !== "ARCHIVED");
     const archivedRooms = rooms.filter(r => r.status === "ARCHIVED");
     const displayedRooms = showArchived ? rooms : activeRooms;
+
+    if (checkingSession) {
+        return (
+            <div className="flex items-center justify-center min-h-screen p-4">
+                <div className="text-center space-y-4">
+                    <div className="w-12 h-12 border-4 border-holi-orange/30 border-t-holi-orange rounded-full animate-spin mx-auto"></div>
+                    <p className="text-holi-grey font-bold">Vérification de la session...</p>
+                </div>
+            </div>
+        );
+    }
 
     if (!isLoggedIn) {
         return (
