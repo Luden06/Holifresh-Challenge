@@ -52,16 +52,26 @@ export async function DELETE(
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    try {
-        // Archive = set status to ARCHIVED
-        const room = await prisma.room.update({
-            where: { id: roomId },
-            data: { status: "ARCHIVED" },
-        });
+    const { searchParams } = new URL(request.url);
+    const permanent = searchParams.get("permanent") === "true";
 
-        return NextResponse.json(room);
+    try {
+        if (permanent) {
+            // Permanent delete: remove room and all associated data (cascading)
+            await prisma.room.delete({
+                where: { id: roomId },
+            });
+            return NextResponse.json({ deleted: true });
+        } else {
+            // Soft delete: archive
+            const room = await prisma.room.update({
+                where: { id: roomId },
+                data: { status: "ARCHIVED" },
+            });
+            return NextResponse.json(room);
+        }
     } catch (error) {
-        console.error("Archive room error:", error);
-        return NextResponse.json({ error: "Failed to archive room" }, { status: 500 });
+        console.error("Delete/archive room error:", error);
+        return NextResponse.json({ error: "Failed to process room" }, { status: 500 });
     }
 }

@@ -2,10 +2,102 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, Plus, DoorOpen, DoorClosed, Link as LinkIcon, ExternalLink, Pencil, Archive, X, Check, Eye, EyeOff } from "lucide-react";
+import { Lock, Plus, DoorOpen, DoorClosed, Link as LinkIcon, ExternalLink, Pencil, Archive, X, Check, Eye, EyeOff, Trash2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { formatCents } from "@/lib/utils";
 
+// ─── Reusable Confirmation Modal ────────────────────────────────────────────
+function ConfirmModal({
+    open,
+    title,
+    message,
+    icon,
+    confirmLabel,
+    cancelLabel = "Annuler",
+    variant = "default",
+    onConfirm,
+    onCancel,
+    loading = false,
+}: {
+    open: boolean;
+    title: string;
+    message: string;
+    icon: React.ReactNode;
+    confirmLabel: string;
+    cancelLabel?: string;
+    variant?: "default" | "danger";
+    onConfirm: () => void;
+    onCancel: () => void;
+    loading?: boolean;
+}) {
+    if (!open) return null;
+
+    const isDanger = variant === "danger";
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onCancel}>
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-float" onClick={(e) => e.stopPropagation()}>
+                {/* Icon */}
+                <div className="flex justify-center">
+                    <div className={cn(
+                        "p-4 rounded-full",
+                        isDanger ? "bg-red-50" : "bg-holi-orange/10"
+                    )}>
+                        {icon}
+                    </div>
+                </div>
+
+                {/* Title & Message */}
+                <div className="text-center space-y-2">
+                    <h3 className={cn(
+                        "text-xl font-heading font-black uppercase italic",
+                        isDanger ? "text-red-600" : "text-holi-dark"
+                    )}>
+                        {title}
+                    </h3>
+                    <p className="text-holi-grey text-sm font-medium leading-relaxed">
+                        {message}
+                    </p>
+                </div>
+
+                {/* Danger warning bar */}
+                {isDanger && (
+                    <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs font-bold text-red-600">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                        Cette action est irréversible.
+                    </div>
+                )}
+
+                {/* Buttons */}
+                <div className="flex items-center gap-3 pt-1">
+                    <button
+                        onClick={onConfirm}
+                        disabled={loading}
+                        className={cn(
+                            "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-black uppercase transition-all",
+                            isDanger
+                                ? "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-200"
+                                : "btn-primary"
+                        )}
+                    >
+                        {loading ? (
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : null}
+                        {confirmLabel}
+                    </button>
+                    <button
+                        onClick={onCancel}
+                        className="flex-1 btn-ghost text-sm font-black uppercase"
+                    >
+                        {cancelLabel}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Admin Page ─────────────────────────────────────────────────────────────
 export default function AdminPage() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [adminCode, setAdminCode] = useState("");
@@ -22,6 +114,20 @@ export default function AdminPage() {
         rdvValueCents: "1000",
         signaturesGoal: "15",
         joinCode: ""
+    });
+
+    // Confirmation modal state
+    const [confirmModal, setConfirmModal] = useState<{
+        open: boolean;
+        title: string;
+        message: string;
+        icon: React.ReactNode;
+        confirmLabel: string;
+        variant: "default" | "danger";
+        onConfirm: () => void;
+    }>({
+        open: false, title: "", message: "", icon: null,
+        confirmLabel: "", variant: "default", onConfirm: () => { },
     });
 
     const router = useRouter();
@@ -142,17 +248,49 @@ export default function AdminPage() {
         }
     }
 
-    async function archiveRoom(roomId: string) {
-        if (!confirm("Archiver cette room ? Elle ne sera plus visible par défaut.")) return;
-        try {
-            const res = await fetch(`/api/rooms/${roomId}`, { method: "DELETE" });
-            if (res.ok) {
-                const updated = await res.json();
-                setRooms(rooms.map(r => r.id === roomId ? updated : r));
-            }
-        } catch (err) {
-            console.error(err);
-        }
+    function requestArchive(room: any) {
+        setConfirmModal({
+            open: true,
+            title: "Archiver la Room",
+            message: `La room "${room.name}" sera masquée de la liste principale. Les données sont conservées et vous pourrez toujours la consulter via le filtre "Voir archivées".`,
+            icon: <Archive className="w-8 h-8 text-holi-orange" />,
+            confirmLabel: "Archiver",
+            variant: "default",
+            onConfirm: async () => {
+                try {
+                    const res = await fetch(`/api/rooms/${room.id}`, { method: "DELETE" });
+                    if (res.ok) {
+                        const updated = await res.json();
+                        setRooms(rooms.map(r => r.id === room.id ? updated : r));
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+                setConfirmModal(prev => ({ ...prev, open: false }));
+            },
+        });
+    }
+
+    function requestDelete(room: any) {
+        setConfirmModal({
+            open: true,
+            title: "Supprimer la Room",
+            message: `Vous êtes sur le point de supprimer définitivement la room "${room.name}" ainsi que TOUS ses participants et déclarations. Cette action ne peut pas être annulée.`,
+            icon: <Trash2 className="w-8 h-8 text-red-500" />,
+            confirmLabel: "Supprimer définitivement",
+            variant: "danger",
+            onConfirm: async () => {
+                try {
+                    const res = await fetch(`/api/rooms/${room.id}?permanent=true`, { method: "DELETE" });
+                    if (res.ok) {
+                        setRooms(rooms.filter(r => r.id !== room.id));
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+                setConfirmModal(prev => ({ ...prev, open: false }));
+            },
+        });
     }
 
     const activeRooms = rooms.filter(r => r.status !== "ARCHIVED");
@@ -369,13 +507,20 @@ export default function AdminPage() {
                                                 </button>
 
                                                 <button
-                                                    onClick={() => archiveRoom(room.id)}
+                                                    onClick={() => requestArchive(room)}
                                                     className="btn-ghost text-xs py-2 px-4 text-neutral-400 hover:bg-neutral-100 border-neutral-200 uppercase font-black"
                                                 >
                                                     <Archive className="w-4 h-4" /> Archiver
                                                 </button>
                                             </>
                                         )}
+
+                                        <button
+                                            onClick={() => requestDelete(room)}
+                                            className="btn-ghost text-xs py-2 px-4 text-red-400 hover:bg-red-50 border-red-200 uppercase font-black"
+                                        >
+                                            <Trash2 className="w-4 h-4" /> Supprimer
+                                        </button>
 
                                         <Link
                                             href={`/admin/${room.id}/events`}
@@ -488,6 +633,18 @@ export default function AdminPage() {
                     </div>
                 </div>
             )}
+
+            {/* Confirm Modal (Archive / Delete) */}
+            <ConfirmModal
+                open={confirmModal.open}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                icon={confirmModal.icon}
+                confirmLabel={confirmModal.confirmLabel}
+                variant={confirmModal.variant}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, open: false }))}
+            />
         </div>
     );
 }
