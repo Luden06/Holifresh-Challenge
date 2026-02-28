@@ -320,13 +320,13 @@ export default function TVScreenPage() {
                             </div>
                         </div>
 
-                        <div className="relative">
+                        <div className="relative w-full">
                             <div className="h-px w-full bg-black/5 mb-6" />
                             <span className="flex items-center gap-2 text-[9px] lg:text-[10px] font-black text-black/30 tracking-[0.4em] mb-1">
                                 <TrendingUp className="w-3 h-3" /> BUSINESS POTENTIEL
                             </span>
-                            <p className="text-4xl lg:text-[6rem] font-logo font-black text-[#FF914D] italic tracking-tighter leading-none">
-                                {formatCents(summary?.businessTotalCents || 0)}
+                            <p className="text-4xl sm:text-6xl md:text-7xl lg:text-[5rem] xl:text-[6rem] font-logo font-black text-[#FF914D] italic tracking-tighter leading-none truncate max-w-full">
+                                {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Math.round((summary?.businessTotalCents || 0) / 100))}
                             </p>
                         </div>
 

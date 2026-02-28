@@ -532,12 +532,9 @@ export default function AdminPage() {
                                 </div>
 
                                 {room.status !== "DRAFT" && room.status !== "ARCHIVED" && (
-                                    <div className="mt-6 pt-6 border-t border-black/5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div className="mt-6 pt-6 border-t border-black/5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <Link href={`/join/${room.id}`} target="_blank" className="flex items-center gap-2 text-xs font-bold text-holi-grey hover:text-holi-orange transition-colors">
-                                            <LinkIcon className="w-3 h-3" /> Page Join <ExternalLink className="w-3 h-3" />
-                                        </Link>
-                                        <Link href={`/room/${room.id}`} target="_blank" className="flex items-center gap-2 text-xs font-bold text-holi-grey hover:text-holi-orange transition-colors">
-                                            <LinkIcon className="w-3 h-3" /> Page Sales <ExternalLink className="w-3 h-3" />
+                                            <LinkIcon className="w-3 h-3" /> Lien Participant <ExternalLink className="w-3 h-3" />
                                         </Link>
                                         <Link href={`/screen/${room.id}`} target="_blank" className="flex items-center gap-2 text-xs font-bold text-holi-grey hover:text-holi-orange transition-colors">
                                             <LinkIcon className="w-3 h-3" /> Page TV <ExternalLink className="w-3 h-3" />
