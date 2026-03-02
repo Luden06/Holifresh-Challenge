@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     }
 
     try {
-        const { name, objectiveTotal, rdvValueCents, joinCode, signaturesGoal } = await request.json();
+        const { name, objectiveTotal, rdvValueCents, joinCode, signaturesGoal, cagnotteValueCents } = await request.json();
 
         if (!name || !joinCode) {
             return NextResponse.json({ error: "Name and joinCode are required" }, { status: 400 });
@@ -45,6 +45,7 @@ export async function POST(request: Request) {
                 joinCode,
                 objectiveTotal: parseInt(objectiveTotal) || 0,
                 rdvValueCents: parseInt(rdvValueCents) || 0,
+                cagnotteValueCents: parseInt(cagnotteValueCents) || 0,
                 signaturesGoal: parseInt(signaturesGoal) || 0,
             },
         });

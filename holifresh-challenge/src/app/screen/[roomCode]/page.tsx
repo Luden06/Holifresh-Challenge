@@ -236,6 +236,17 @@ export default function TVScreenPage() {
                     <span className="text-[8px] lg:text-[10px] font-logo font-black tracking-[0.6em] text-black/40 italic">Holifresh • Challenge • 2026</span>
                     <div className="h-px w-8 bg-black/10" />
                 </div>
+                {/* Active Boost Badge */}
+                {summary?.activeBoosts?.length > 0 && (
+                    <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
+                        {summary.activeBoosts.map((b: any) => (
+                            <span key={b.id} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-holi-orange/10 border border-holi-orange/20 text-sm font-bold text-holi-orange animate-pulse">
+                                <Zap className="w-3.5 h-3.5" />
+                                {b.label} {b.type === 'MULTIPLIER' ? `×${b.multiplier}` : `+${formatCents(b.bonusCents)}`}
+                            </span>
+                        ))}
+                    </div>
+                )}
             </header>
 
             <main className="flex-1 lg:grid lg:grid-cols-12 gap-0 relative z-10 items-stretch">

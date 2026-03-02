@@ -16,7 +16,9 @@ import {
     Flame,
     Clock,
     MessageSquare,
-    AlertTriangle
+    AlertTriangle,
+    Zap,
+    Gift
 } from "lucide-react";
 import { formatCents, cn } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
@@ -189,7 +191,14 @@ export default function RoomPage() {
             if (res.ok) {
                 const data = await res.json();
                 triggerBurst();
-                setFeedback({ type: 'success', message: "+1 RDV Validé !" });
+
+                // Build feedback message with boost info
+                let feedbackMsg = "+1 RDV Validé !";
+                if (data.appliedBoosts && data.appliedBoosts.length > 0) {
+                    const boostLabels = data.appliedBoosts.map((b: any) => b.label).join(' + ');
+                    feedbackMsg = `+1 RDV — ${boostLabels} ⚡`;
+                }
+                setFeedback({ type: 'success', message: feedbackMsg });
                 fetchSummary();
 
                 // Check for rapid declaration (< 2 min since last)
@@ -264,9 +273,12 @@ export default function RoomPage() {
 
     const personalStats = summary?.leaderboard?.find((p: any) => p.id === participant?.id);
     const personalScore = personalStats?.score || 0;
+    const personalCagnotte = personalStats?.cagnotteCents || 0;
     const teamScore = summary?.totals || 0;
     const objective = summary?.objectiveTotal || 50;
     const myClaims = summary?.myClaims || [];
+    const activeBoosts = summary?.activeBoosts || [];
+    const teamCagnotte = summary?.teamCagnotteCents || 0;
 
     return (
         <div className="max-w-4xl mx-auto p-4 flex flex-col min-h-screen gap-6 pb-24 md:pb-8 relative">
@@ -276,6 +288,25 @@ export default function RoomPage() {
                 width={typeof window !== 'undefined' ? window.innerWidth : 0}
                 height={typeof window !== 'undefined' ? window.innerHeight : 0}
             />
+
+            {/* Active Boost Banner */}
+            {activeBoosts.length > 0 && (
+                <div className="bg-gradient-to-r from-holi-orange/10 to-holi-red/10 border border-holi-orange/20 rounded-2xl px-4 py-3 flex items-center gap-3 animate-pulse shadow-lg shadow-holi-orange/5">
+                    <div className="p-2 bg-holi-orange/20 rounded-full">
+                        <Zap className="w-5 h-5 text-holi-orange" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-holi-orange">Boost actif !</p>
+                        <div className="flex flex-wrap gap-1.5 mt-0.5">
+                            {activeBoosts.map((b: any) => (
+                                <span key={b.id} className="text-xs font-bold text-holi-dark">
+                                    {b.label} {b.type === 'MULTIPLIER' ? `×${b.multiplier}` : `+${formatCents(b.bonusCents)}`}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Header / Stats Summary */}
             <header className="flex items-center justify-between">
@@ -292,8 +323,8 @@ export default function RoomPage() {
                 </div>
 
                 <div className="text-right">
-                    <p className="text-xl font-heading font-black text-holi-red">{formatCents(personalStats?.businessCents || 0)}</p>
-                    <p className="text-[10px] text-holi-grey uppercase tracking-widest font-bold">Mon Business</p>
+                    <p className="text-xl font-heading font-black text-holi-red">{formatCents(personalCagnotte)}</p>
+                    <p className="text-[10px] text-holi-grey uppercase tracking-widest font-bold">Ma Cagnotte</p>
                 </div>
             </header>
 
@@ -383,9 +414,9 @@ export default function RoomPage() {
                 <div className="p-4 bg-holi-navy/[0.02] flex items-center justify-between border-b border-black/5">
                     <div className="flex items-center gap-2">
                         <Trophy className="w-5 h-5 text-holi-yellow" />
-                        <h3 className="font-heading font-black uppercase tracking-wider text-sm text-holi-navy">Leaderboard RDVs</h3>
+                        <h3 className="font-heading font-black uppercase tracking-wider text-sm text-holi-navy">Leaderboard</h3>
                     </div>
-                    <p className="text-[10px] text-holi-grey font-bold">Total : {formatCents(summary?.businessTotalCents || 0)}</p>
+                    <p className="text-[10px] text-holi-grey font-bold">Cagnotte Équipe : {formatCents(teamCagnotte)}</p>
                 </div>
 
                 <div className="divide-y divide-black/5">
@@ -408,6 +439,7 @@ export default function RoomPage() {
                                 </div>
                                 <div className="text-right">
                                     <p className="font-black text-holi-dark">{p.score} <span className="text-[10px] text-holi-grey font-bold uppercase">RDV</span></p>
+                                    <p className="text-[10px] font-bold text-holi-orange">{formatCents(p.cagnotteCents || 0)}</p>
                                 </div>
                             </div>
                             {/* Mini Progress Bar for each user */}
@@ -434,7 +466,7 @@ export default function RoomPage() {
                     >
                         <div className="flex items-center gap-2">
                             <CalendarCheck className="w-5 h-5 text-holi-orange" />
-                            <h3 className="font-heading font-black uppercase tracking-wider text-sm text-holi-navy">Mes RDV ({myClaims.filter((c: any) => c.status === 'VALID').length})</h3>
+                            <h3 className="font-heading font-black uppercase tracking-wider text-sm text-holi-navy">Historique ({myClaims.filter((c: any) => c.status === 'VALID').length})</h3>
                         </div>
                         <span className="text-xs text-holi-grey font-bold">{showMyClaims ? "Masquer ▲" : "Voir ▼"}</span>
                     </button>
@@ -443,21 +475,34 @@ export default function RoomPage() {
                         <div className="divide-y divide-black/5">
                             {myClaims.map((claim: any) => {
                                 const elapsed = Date.now() - new Date(claim.createdAt).getTime();
-                                const canSelfCancel = claim.status === 'VALID' && elapsed < SELF_CANCEL_WINDOW_MS;
+                                const canSelfCancel = claim.status === 'VALID' && claim.type !== 'BONUS' && elapsed < SELF_CANCEL_WINDOW_MS;
                                 const remainingMin = Math.max(0, Math.ceil((SELF_CANCEL_WINDOW_MS - elapsed) / 60000));
 
                                 return (
                                     <div key={claim.id} className="flex items-center justify-between px-4 py-3">
                                         <div className="flex items-center gap-3">
-                                            <Clock className="w-3.5 h-3.5 text-neutral-400" />
-                                            <span className="text-sm font-medium">
-                                                {new Date(claim.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                                            </span>
+                                            {claim.type === 'BONUS' ? (
+                                                <div className="w-8 h-8 rounded-full bg-holi-orange/10 flex items-center justify-center flex-shrink-0">
+                                                    <Gift className="w-4 h-4 text-holi-orange" />
+                                                </div>
+                                            ) : (
+                                                <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                                            )}
+
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-medium">
+                                                    {claim.type === 'BONUS' ? 'Bonus Direct' : new Date(claim.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                                                </span>
+                                                {claim.type === 'BONUS' && claim.valueCents && (
+                                                    <span className="text-[10px] font-bold text-holi-orange">+{formatCents(claim.valueCents)}</span>
+                                                )}
+                                            </div>
+
                                             <span className={cn(
                                                 "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
                                                 claim.status === "VALID" ? "bg-accent/10 text-accent" : "bg-danger/10 text-danger"
                                             )}>
-                                                {claim.status === "VALID" ? "✓ Validé" : "✗ Annulé"}
+                                                {claim.status === "VALID" ? (claim.type === 'BONUS' ? "Obtenu" : "✓ Validé") : "✗ Annulé"}
                                             </span>
                                             {claim.status === "CANCELLED" && claim.cancelReason && (
                                                 <span className="text-[11px] text-neutral-400 italic flex items-center gap-1">
@@ -490,8 +535,13 @@ export default function RoomPage() {
                 </div>
                 <div className="w-px h-8 bg-black/5" />
                 <div className="text-center">
+                    <p className="text-xs text-holi-grey uppercase tracking-widest font-black">Cagnotte</p>
+                    <p className="text-xl font-black text-holi-orange">{formatCents(personalCagnotte)}</p>
+                </div>
+                <div className="w-px h-8 bg-black/5" />
+                <div className="text-center">
                     <p className="text-xs text-holi-grey uppercase tracking-widest font-black">Équipe</p>
-                    <p className="text-xl font-black text-holi-orange">{summary?.totals}</p>
+                    <p className="text-xl font-black text-holi-blue">{formatCents(teamCagnotte)}</p>
                 </div>
             </div>
 

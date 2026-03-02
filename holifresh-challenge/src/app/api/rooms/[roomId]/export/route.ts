@@ -27,6 +27,18 @@ export async function GET(
                         displayName: true,
                     },
                 },
+                claimBoosts: {
+                    select: {
+                        boost: {
+                            select: {
+                                label: true,
+                                type: true,
+                                multiplier: true,
+                                bonusCents: true,
+                            },
+                        },
+                    },
+                },
             },
             orderBy: {
                 createdAt: 'desc',
@@ -38,6 +50,7 @@ export async function GET(
             "claim_id",
             "created_at",
             "status",
+            "type",              // RDV or BONUS
             "participant_id",
             "display_name",
             "cancelled_at",
@@ -46,14 +59,48 @@ export async function GET(
             "room_id",
             "rdv_value_cents",
             "computed_business_cents",
+            "cagnotte_earned_cents", // New: How much cagnotte was earned for this line
+            "applied_boosts_info",   // New: Labels of boosts/bonus applied
         ];
 
         const rows = claims.map((claim: any) => {
-            const business = claim.status === "VALID" ? room.rdvValueCents : 0;
+            const isCancelled = claim.status === "CANCELLED";
+            let business = 0;
+            let cagnotteEarned = 0;
+            let boostInfo = "";
+
+            if (!isCancelled) {
+                if (claim.type === "BONUS") {
+                    business = 0; // Bonus doesn't generate business CA
+                    cagnotteEarned = claim.valueCents || 0;
+                    boostInfo = "Bonus Direct";
+                } else {
+                    // Normal RDV
+                    business = room.rdvValueCents;
+                    cagnotteEarned = room.cagnotteValueCents;
+
+                    const appliedBoosts = claim.claimBoosts?.map((cb: any) => cb.boost) || [];
+                    if (appliedBoosts.length > 0) {
+                        const labels = [];
+                        for (const b of appliedBoosts) {
+                            if (b.type === "MULTIPLIER" && b.multiplier) {
+                                cagnotteEarned = Math.round(cagnotteEarned * b.multiplier);
+                                labels.push(`${b.label} (x${b.multiplier})`);
+                            } else if (b.type === "FLAT_BONUS" && b.bonusCents) {
+                                cagnotteEarned += b.bonusCents;
+                                labels.push(`${b.label} (+${b.bonusCents / 100}€)`);
+                            }
+                        }
+                        boostInfo = labels.join(" | ");
+                    }
+                }
+            }
+
             return [
                 claim.id,
                 claim.createdAt.toISOString(),
                 claim.status,
+                claim.type || "RDV",
                 claim.participantId,
                 claim.participant.displayName,
                 claim.cancelledAt?.toISOString() || "",
@@ -62,6 +109,8 @@ export async function GET(
                 claim.roomId,
                 room.rdvValueCents,
                 business,
+                cagnotteEarned,
+                boostInfo,
             ];
         });
 

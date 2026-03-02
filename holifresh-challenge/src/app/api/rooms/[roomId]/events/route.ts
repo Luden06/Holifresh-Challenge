@@ -23,6 +23,18 @@ export async function GET(
                         displayName: true,
                     },
                 },
+                claimBoosts: {
+                    select: {
+                        boost: {
+                            select: {
+                                label: true,
+                                type: true,
+                                multiplier: true,
+                                bonusCents: true,
+                            }
+                        }
+                    }
+                },
             },
             orderBy: {
                 createdAt: 'desc',

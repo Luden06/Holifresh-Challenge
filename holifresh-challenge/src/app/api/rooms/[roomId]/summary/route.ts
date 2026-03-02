@@ -24,20 +24,39 @@ export async function GET(
                     select: {
                         id: true,
                         displayName: true,
-                        _count: {
+                        claims: {
+                            where: { status: 'VALID' },
                             select: {
-                                claims: {
-                                    where: { status: 'VALID' }
+                                id: true,
+                                type: true,
+                                valueCents: true,
+                                claimBoosts: {
+                                    select: {
+                                        boost: {
+                                            select: {
+                                                type: true,
+                                                multiplier: true,
+                                                bonusCents: true,
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     },
-                    orderBy: {
-                        claims: {
-                            _count: 'desc'
-                        }
-                    },
-                    take: 10
+                },
+                boosts: {
+                    where: { isActive: true },
+                    select: {
+                        id: true,
+                        label: true,
+                        type: true,
+                        multiplier: true,
+                        bonusCents: true,
+                        isActive: true,
+                        startAt: true,
+                        endAt: true,
+                    }
                 }
             }
         });
@@ -46,14 +65,61 @@ export async function GET(
             return NextResponse.json({ error: "Room not found" }, { status: 404 });
         }
 
-        const totals = room._count.claims;
+        const now = new Date();
+        const totals = room._count.claims; // Temporarily keep this (it might include bonuses, we will adjust it)
 
-        const formattedLeaderboard = room.participants.map((p: any) => ({
-            id: p.id,
-            displayName: p.displayName,
-            score: p._count.claims,
-            businessCents: p._count.claims * room.rdvValueCents,
-        }));
+        // Filter effectively active boosts (isActive + within schedule window)
+        const activeBoosts = room.boosts.filter((b) => {
+            if (b.startAt && now < b.startAt) return false;
+            if (b.endAt && now > b.endAt) return false;
+            return true;
+        });
+
+        // Calculate cagnotte for each participant
+        const baseCagnotte = room.cagnotteValueCents;
+        let trueRdvTotals = 0;
+
+        const formattedLeaderboard = room.participants
+            .map((p) => {
+                const validClaims = p.claims;
+                let score = 0;
+                let cagnotteCents = 0;
+
+                for (const claim of validClaims) {
+                    if (claim.type === 'BONUS') {
+                        // Bonus Direct: Just add the value to cagnotte, no RDV score
+                        if (claim.valueCents) {
+                            cagnotteCents += claim.valueCents;
+                        }
+                    } else {
+                        // Regular RDV (type === 'RDV')
+                        score++;
+                        trueRdvTotals++;
+
+                        let claimCagnotte = baseCagnotte;
+                        for (const cb of claim.claimBoosts) {
+                            if (cb.boost.type === 'MULTIPLIER' && cb.boost.multiplier) {
+                                claimCagnotte = Math.round(claimCagnotte * cb.boost.multiplier);
+                            } else if (cb.boost.type === 'FLAT_BONUS' && cb.boost.bonusCents) {
+                                claimCagnotte += cb.boost.bonusCents;
+                            }
+                        }
+                        cagnotteCents += claimCagnotte;
+                    }
+                }
+
+                return {
+                    id: p.id,
+                    displayName: p.displayName,
+                    score,
+                    businessCents: score * room.rdvValueCents,
+                    cagnotteCents,
+                };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 10);
+
+        const teamCagnotteCents = formattedLeaderboard.reduce((sum, p) => sum + p.cagnotteCents, 0);
 
         // Optionally fetch participant's own claims for "Mes RDV" section
         const { searchParams } = new URL(request.url);
@@ -69,8 +135,22 @@ export async function GET(
                     id: true,
                     createdAt: true,
                     status: true,
+                    type: true,
+                    valueCents: true,
                     cancelReason: true,
                     cancelledBy: true,
+                    claimBoosts: {
+                        select: {
+                            boost: {
+                                select: {
+                                    label: true,
+                                    type: true,
+                                    multiplier: true,
+                                    bonusCents: true,
+                                }
+                            }
+                        }
+                    }
                 },
             });
         }
@@ -78,13 +158,16 @@ export async function GET(
         return NextResponse.json({
             roomName: room.name,
             status: room.status,
-            totals,
-            businessTotalCents: totals * room.rdvValueCents,
+            totals: trueRdvTotals,
+            businessTotalCents: trueRdvTotals * room.rdvValueCents,
             objectiveTotal: room.objectiveTotal,
-            objectiveProgress: room.objectiveTotal > 0 ? (totals / room.objectiveTotal) * 100 : 0,
+            objectiveProgress: room.objectiveTotal > 0 ? (trueRdvTotals / room.objectiveTotal) * 100 : 0,
             leaderboard: formattedLeaderboard,
             signaturesGoal: room.signaturesGoal,
             rdvValueCents: room.rdvValueCents,
+            cagnotteValueCents: room.cagnotteValueCents,
+            teamCagnotteCents,
+            activeBoosts,
             lastEventAt: new Date().toISOString(),
             myClaims,
         });
@@ -93,3 +176,4 @@ export async function GET(
         return NextResponse.json({ error: "Failed to fetch summary" }, { status: 500 });
     }
 }
+

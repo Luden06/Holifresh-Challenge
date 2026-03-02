@@ -112,6 +112,7 @@ export default function AdminPage() {
         name: "",
         objectiveTotal: "50",
         rdvValueCents: "1000",
+        cagnotteValueCents: "500",
         signaturesGoal: "15",
         joinCode: ""
     });
@@ -200,7 +201,7 @@ export default function AdminPage() {
             if (res.ok) {
                 const room = await res.json();
                 setRooms([room, ...rooms]);
-                setNewRoom({ name: "", objectiveTotal: "50", rdvValueCents: "1000", signaturesGoal: "15", joinCode: "" });
+                setNewRoom({ name: "", objectiveTotal: "50", rdvValueCents: "1000", cagnotteValueCents: "500", signaturesGoal: "15", joinCode: "" });
             }
         } catch (err) {
             console.error(err);
@@ -232,6 +233,7 @@ export default function AdminPage() {
                     name: editingRoom.name,
                     objectiveTotal: editingRoom.objectiveTotal,
                     rdvValueCents: editingRoom.rdvValueCents,
+                    cagnotteValueCents: editingRoom.cagnotteValueCents,
                     signaturesGoal: editingRoom.signaturesGoal,
                     joinCode: editingRoom.joinCode,
                 }),
@@ -402,6 +404,24 @@ export default function AdminPage() {
                                 </div>
                             </div>
                             <div>
+                                <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Cagnotte / RDV (€)</label>
+                                <input
+                                    type="number"
+                                    className="input-field font-bold"
+                                    value={isNaN(parseInt(newRoom.cagnotteValueCents)) ? "" : parseInt(newRoom.cagnotteValueCents) / 100}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === "") {
+                                            setNewRoom({ ...newRoom, cagnotteValueCents: "" });
+                                        } else {
+                                            setNewRoom({ ...newRoom, cagnotteValueCents: (Math.round(parseFloat(val) * 100)).toString() });
+                                        }
+                                    }}
+                                    required
+                                />
+                                <p className="text-[9px] text-holi-grey mt-0.5">≤ Valeur RDV — récompense participant</p>
+                            </div>
+                            <div>
                                 <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Objectif Signatures</label>
                                 <input
                                     type="number"
@@ -477,6 +497,7 @@ export default function AdminPage() {
                                             <span>Obj: <span className="text-holi-dark">{room.objectiveTotal}</span> RDVs</span>
                                             <span>Signatures: <span className="text-holi-dark">{room.signaturesGoal}</span></span>
                                             <span>Val: <span className="text-holi-dark">{formatCents(room.rdvValueCents)}</span></span>
+                                            <span>Cagnotte: <span className="text-holi-dark">{formatCents(room.cagnotteValueCents || 0)}</span></span>
                                         </div>
                                     </div>
 
@@ -592,6 +613,16 @@ export default function AdminPage() {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
+                                    <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Cagnotte / RDV (€)</label>
+                                    <input
+                                        type="number"
+                                        className="input-field font-bold"
+                                        value={(editingRoom.cagnotteValueCents || 0) / 100}
+                                        onChange={(e) => setEditingRoom({ ...editingRoom, cagnotteValueCents: Math.round(parseFloat(e.target.value) * 100) || 0 })}
+                                    />
+                                    <p className="text-[9px] text-holi-grey mt-0.5">≤ Valeur RDV — récompense participant</p>
+                                </div>
+                                <div>
                                     <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Objectif Signatures</label>
                                     <input
                                         type="number"
@@ -600,15 +631,15 @@ export default function AdminPage() {
                                         onChange={(e) => setEditingRoom({ ...editingRoom, signaturesGoal: parseInt(e.target.value) || 0 })}
                                     />
                                 </div>
-                                <div>
-                                    <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Join Code</label>
-                                    <input
-                                        type="text"
-                                        className="input-field font-mono uppercase font-black tracking-widest text-center text-holi-orange"
-                                        value={editingRoom.joinCode}
-                                        onChange={(e) => setEditingRoom({ ...editingRoom, joinCode: e.target.value.toUpperCase() })}
-                                    />
-                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-black uppercase text-holi-grey mb-1 block">Join Code</label>
+                                <input
+                                    type="text"
+                                    className="input-field font-mono uppercase font-black tracking-widest text-center text-holi-orange"
+                                    value={editingRoom.joinCode}
+                                    onChange={(e) => setEditingRoom({ ...editingRoom, joinCode: e.target.value.toUpperCase() })}
+                                />
                             </div>
                         </div>
 

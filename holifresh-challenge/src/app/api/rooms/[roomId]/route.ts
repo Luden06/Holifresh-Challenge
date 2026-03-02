@@ -21,6 +21,7 @@ export async function PATCH(
         if (body.name !== undefined) allowedFields.name = body.name;
         if (body.objectiveTotal !== undefined) allowedFields.objectiveTotal = parseInt(body.objectiveTotal) || 0;
         if (body.rdvValueCents !== undefined) allowedFields.rdvValueCents = parseInt(body.rdvValueCents) || 0;
+        if (body.cagnotteValueCents !== undefined) allowedFields.cagnotteValueCents = parseInt(body.cagnotteValueCents) || 0;
         if (body.signaturesGoal !== undefined) allowedFields.signaturesGoal = parseInt(body.signaturesGoal) || 0;
         if (body.joinCode !== undefined) allowedFields.joinCode = body.joinCode;
         if (body.status !== undefined) allowedFields.status = body.status;

@@ -56,10 +56,25 @@ export async function POST(
             }
         }
 
-        // 5. Create Claim and Update Participant in a Transaction
+        // 5. Detect active boosts
+        const activeBoosts = await prisma.boost.findMany({
+            where: {
+                roomId,
+                isActive: true,
+            },
+        });
+
+        // Filter by schedule window
+        const effectiveBoosts = activeBoosts.filter((b) => {
+            if (b.startAt && now < b.startAt) return false;
+            if (b.endAt && now > b.endAt) return false;
+            return true;
+        });
+
+        // 6. Create Claim, ClaimBoosts, and Update Participant in a Transaction
         const claimId = uuidv4();
 
-        await prisma.$transaction([
+        const transactionOps: any[] = [
             prisma.claim.create({
                 data: {
                     id: claimId,
@@ -74,16 +89,42 @@ export async function POST(
                 where: { id: participant.id },
                 data: { lastClaimAt: now },
             }),
-        ]);
+        ];
+
+        // Add ClaimBoost entries for each active boost
+        for (const boost of effectiveBoosts) {
+            transactionOps.push(
+                prisma.claimBoost.create({
+                    data: {
+                        claimId,
+                        boostId: boost.id,
+                    },
+                })
+            );
+        }
+
+        await prisma.$transaction(transactionOps);
 
         // Calculate time since last claim for rapid-declaration detection
         const timeSinceLastClaim = participant.lastClaimAt
             ? now.getTime() - new Date(participant.lastClaimAt).getTime()
             : null;
 
-        return NextResponse.json({ success: true, claimId, timeSinceLastClaim });
+        return NextResponse.json({
+            success: true,
+            claimId,
+            timeSinceLastClaim,
+            appliedBoosts: effectiveBoosts.map((b) => ({
+                id: b.id,
+                label: b.label,
+                type: b.type,
+                multiplier: b.multiplier,
+                bonusCents: b.bonusCents,
+            })),
+        });
     } catch (error) {
         console.error("Claim error:", error);
         return NextResponse.json({ error: "Failed to record claim" }, { status: 500 });
     }
 }
+
