@@ -334,15 +334,16 @@ export default function AdminEventsPage() {
 
                     {activeTab === "BOOSTS" && (
                         <div className="flex items-center gap-2">
-                            {boosts.length === 0 && (
-                                <button
-                                    onClick={loadTemplates}
-                                    disabled={loadingTemplates}
-                                    className="btn-ghost text-xs py-2 px-4 text-neutral-500 font-bold flex items-center gap-1.5 hover:bg-neutral-100"
-                                >
-                                    <Sparkles className="w-4 h-4" /> Templates
-                                </button>
-                            )}
+                            <button
+                                onClick={() => {
+                                    if (boosts.length > 0 && !window.confirm("Certains boosts existent déjà. Voulez-vous charger les templates supplémentaires ?")) return;
+                                    loadTemplates();
+                                }}
+                                disabled={loadingTemplates}
+                                className="btn-ghost text-xs py-2 px-4 text-neutral-500 font-bold flex items-center gap-1.5 hover:bg-neutral-100"
+                            >
+                                <Sparkles className="w-4 h-4" /> Templates
+                            </button>
                             <button
                                 onClick={() => setShowCreateBoost(true)}
                                 className="btn-ghost text-xs py-2 px-4 text-holi-orange hover:bg-holi-orange/10 border-holi-orange/20 uppercase font-black flex items-center gap-1.5"
