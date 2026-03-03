@@ -222,6 +222,19 @@ export default function AdminPage() {
         }
     }
 
+    async function launchEvent(roomId: string) {
+        if (!confirm("🚀 Lancer l'événement ?\n\nLes boosts \"Au lancement\" seront activés automatiquement.\nLes participants pourront déclarer des RDV.")) return;
+        try {
+            const res = await fetch(`/api/rooms/${roomId}/launch`, { method: "POST" });
+            if (res.ok) {
+                const { room } = await res.json();
+                setRooms(rooms.map(r => r.id === roomId ? room : r));
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
     async function saveEdit() {
         if (!editingRoom) return;
         setLoading(true);
@@ -482,12 +495,13 @@ export default function AdminPage() {
                                             <h3 className="text-xl font-bold text-holi-dark">{room.name}</h3>
                                             <span className={cn(
                                                 "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider",
-                                                room.status === "OPEN" ? "bg-holi-blue/10 text-holi-blue" :
-                                                    room.status === "CLOSED" ? "bg-holi-dark/10 text-holi-grey" :
-                                                        room.status === "ARCHIVED" ? "bg-neutral-200 text-neutral-400" :
-                                                            "bg-holi-orange/10 text-holi-orange"
+                                                room.status === "LIVE" ? "bg-green-100 text-green-600" :
+                                                    room.status === "OPEN" ? "bg-holi-blue/10 text-holi-blue" :
+                                                        room.status === "CLOSED" ? "bg-holi-dark/10 text-holi-grey" :
+                                                            room.status === "ARCHIVED" ? "bg-neutral-200 text-neutral-400" :
+                                                                "bg-holi-orange/10 text-holi-orange"
                                             )}>
-                                                {room.status}
+                                                {room.status === "LIVE" ? "🟢 EN DIRECT" : room.status}
                                             </span>
                                         </div>
                                         <div className="flex flex-wrap gap-4 text-xs font-bold text-holi-grey/80">
@@ -511,6 +525,21 @@ export default function AdminPage() {
                                                     >
                                                         <DoorOpen className="w-4 h-4" /> Ouvrir
                                                     </button>
+                                                ) : room.status === "OPEN" ? (
+                                                    <>
+                                                        <button
+                                                            onClick={() => launchEvent(room.id)}
+                                                            className="btn-ghost text-xs py-2 px-4 text-green-600 hover:bg-green-50 border-green-200 uppercase font-black animate-pulse"
+                                                        >
+                                                            🚀 Lancer l'événement
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleRoom(room.id, 'close')}
+                                                            className="btn-ghost text-xs py-2 px-4 text-holi-pink hover:bg-holi-pink/10 border-holi-pink/20 uppercase font-black"
+                                                        >
+                                                            <DoorClosed className="w-4 h-4" /> Fermer
+                                                        </button>
+                                                    </>
                                                 ) : (
                                                     <button
                                                         onClick={() => toggleRoom(room.id, 'close')}

@@ -19,12 +19,24 @@ export async function PATCH(
 
         const allowedFields: Record<string, any> = {};
         if (body.label !== undefined) allowedFields.label = body.label;
+        if (body.description !== undefined) allowedFields.description = body.description || null;
         if (body.type !== undefined) allowedFields.type = body.type;
         if (body.multiplier !== undefined) allowedFields.multiplier = body.multiplier !== null ? parseFloat(body.multiplier) : null;
         if (body.bonusCents !== undefined) allowedFields.bonusCents = body.bonusCents !== null ? parseInt(body.bonusCents) : null;
-        if (body.isActive !== undefined) allowedFields.isActive = body.isActive;
+        if (body.trigger !== undefined) allowedFields.trigger = body.trigger || null;
+        if (body.durationMin !== undefined) allowedFields.durationMin = body.durationMin ? parseInt(body.durationMin) : null;
         if (body.startAt !== undefined) allowedFields.startAt = body.startAt ? new Date(body.startAt) : null;
         if (body.endAt !== undefined) allowedFields.endAt = body.endAt ? new Date(body.endAt) : null;
+
+        if (body.isActive !== undefined) {
+            allowedFields.isActive = body.isActive;
+            // Set activatedAt when toggling on, clear when toggling off
+            if (body.isActive) {
+                allowedFields.activatedAt = new Date();
+            } else {
+                allowedFields.activatedAt = null;
+            }
+        }
 
         if (Object.keys(allowedFields).length === 0) {
             return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
@@ -36,11 +48,20 @@ export async function PATCH(
         });
 
         const now = new Date();
-        const effectivelyActive = boost.isActive &&
+        let effectivelyActive = boost.isActive &&
             (!boost.startAt || now >= boost.startAt) &&
             (!boost.endAt || now <= boost.endAt);
 
-        return NextResponse.json({ ...boost, effectivelyActive });
+        // Check duration-based expiration
+        if (effectivelyActive && boost.durationMin && boost.activatedAt) {
+            const expiresAt = new Date(boost.activatedAt.getTime() + boost.durationMin * 60 * 1000);
+            if (now > expiresAt) effectivelyActive = false;
+        }
+
+        const expiresAt = boost.endAt ? boost.endAt :
+            (boost.durationMin && boost.activatedAt ? new Date(boost.activatedAt.getTime() + boost.durationMin * 60 * 1000) : null);
+
+        return NextResponse.json({ ...boost, effectivelyActive, expiresAt });
     } catch (error) {
         console.error("Update boost error:", error);
         return NextResponse.json({ error: "Failed to update boost" }, { status: 500 });

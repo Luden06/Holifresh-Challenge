@@ -13,13 +13,14 @@ datasource db {
 model Room {
   id                 String   @id // roomCode provided by admin
   name               String
-  status             String   @default("DRAFT") // DRAFT, OPEN, CLOSED
+  status             String   @default("DRAFT") // DRAFT, OPEN, LIVE, CLOSED
   joinCode           String
   objectiveTotal     Int      @default(0)
   rdvValueCents      Int      @default(0)
   cagnotteValueCents Int      @default(0) // Cagnotte per RDV (should be <= rdvValueCents)
   createdAt          DateTime @default(now())
   openedAt           DateTime?
+  launchedAt         DateTime? // When event goes LIVE
   closedAt           DateTime?
   signaturesGoal     Int      @default(0)
 
@@ -68,10 +69,16 @@ model Boost {
   id              String    @id @default(uuid())
   roomId          String
   label           String    // ex: "🌅 Last Call", "🕵️ Stand Voisin"
-  type            String    // "MULTIPLIER" or "FLAT_BONUS"
+  description     String?   // Optional description for the boost
+  type            String    // "MULTIPLIER", "FLAT_BONUS", or "PALIER"
   multiplier      Float?    // ex: 2.0 for x2 (when type = MULTIPLIER)
-  bonusCents      Int?      // ex: 2500 for +25€ (when type = FLAT_BONUS)
+  bonusCents      Int?      // ex: 2500 for +25€ (when type = FLAT_BONUS or PALIER)
+  palierScope     String?   // "INDIVIDUAL" or "TEAM" (when type = PALIER)
+  palierTarget    Int?      // The number of RDV to reach (e.g. 5, 10, 50)
+  trigger         String?   // "MANUAL" | "ON_EVENT_START" (null = manual)
+  durationMin     Int?      // Duration in minutes (alternative to endAt)
   isActive        Boolean   @default(false)
+  activatedAt     DateTime? // When the boost was actually activated
   startAt         DateTime? // Scheduled auto-start (nullable = manual only)
   endAt           DateTime? // Scheduled auto-end (nullable = manual deactivation)
   createdAt       DateTime  @default(now())

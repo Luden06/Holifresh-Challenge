@@ -34,8 +34,8 @@ export async function POST(
             select: { status: true },
         });
 
-        if (!room || room.status !== "OPEN") {
-            return NextResponse.json({ error: "Room is not open" }, { status: 403 });
+        if (!room || room.status !== "LIVE") {
+            return NextResponse.json({ error: "L'événement n'est pas encore lancé" }, { status: 403 });
         }
 
         // 3. Idempotency Check (clientRequestId)
@@ -57,7 +57,7 @@ export async function POST(
         }
 
         // 5. Detect active boosts
-        const activeBoosts = await prisma.boost.findMany({
+        const activeBoosts: any[] = await prisma.boost.findMany({
             where: {
                 roomId,
                 isActive: true,
@@ -81,6 +81,7 @@ export async function POST(
                     roomId,
                     participantId: participant.id,
                     clientRequestId,
+                    type: "RDV", // explicitly setting type to RDV for clarity
                     status: 'VALID',
                     createdAt: now,
                 },
@@ -91,8 +92,9 @@ export async function POST(
             }),
         ];
 
-        // Add ClaimBoost entries for each active boost
-        for (const boost of effectiveBoosts) {
+        // Add ClaimBoost entries for MULTIPLIER or FLAT_BONUS active boosts
+        const regularBoosts = effectiveBoosts.filter(b => b.type !== "PALIER");
+        for (const boost of regularBoosts) {
             transactionOps.push(
                 prisma.claimBoost.create({
                     data: {
@@ -103,6 +105,69 @@ export async function POST(
             );
         }
 
+        // Handle PALIER Boosts
+        const palierBoosts = effectiveBoosts.filter(b => b.type === "PALIER" && b.palierTarget && b.palierScope && b.bonusCents);
+        const triggeredPaliers: { label: string; bonusCents: number; scope: string }[] = [];
+        if (palierBoosts.length > 0) {
+            // Count existing valid RDV claims to check if we hit the milestone exactly
+            const userRdvCount = await prisma.claim.count({
+                where: { roomId, participantId: participant.id, type: "RDV", status: "VALID" }
+            });
+            const teamRdvCount = await prisma.claim.count({
+                where: { roomId, type: "RDV", status: "VALID" }
+            });
+
+            // New counts including this new RDV being inserted
+            const newUserCount = userRdvCount + 1;
+            const newTeamCount = teamRdvCount + 1;
+
+            for (const boost of palierBoosts) {
+                if (boost.palierScope === "INDIVIDUAL" && newUserCount === boost.palierTarget) {
+                    triggeredPaliers.push({ label: boost.label, bonusCents: boost.bonusCents, scope: "INDIVIDUAL" });
+                    // Trigger individual bonus
+                    transactionOps.push(
+                        prisma.claim.create({
+                            data: {
+                                id: uuidv4(),
+                                roomId,
+                                participantId: participant.id,
+                                type: "BONUS",
+                                status: "VALID",
+                                valueCents: boost.bonusCents,
+                                cancelReason: `Palier Individuel : ${boost.label}`,
+                                clientRequestId: `bonus-${uuidv4()}`,
+                                createdAt: new Date(now.getTime() + 100) // slight offset
+                            }
+                        })
+                    );
+                } else if (boost.palierScope === "TEAM" && newTeamCount === boost.palierTarget) {
+                    triggeredPaliers.push({ label: boost.label, bonusCents: boost.bonusCents, scope: "TEAM" });
+                    // Trigger team bonus for ALL participants in the room
+                    const allParticipants = await prisma.participant.findMany({
+                        where: { roomId },
+                        select: { id: true }
+                    });
+                    for (const p of allParticipants) {
+                        transactionOps.push(
+                            prisma.claim.create({
+                                data: {
+                                    id: uuidv4(),
+                                    roomId,
+                                    participantId: p.id,
+                                    type: "BONUS",
+                                    status: "VALID",
+                                    valueCents: boost.bonusCents,
+                                    cancelReason: `Palier Équipe : ${boost.label}`,
+                                    clientRequestId: `bonus-${uuidv4()}`,
+                                    createdAt: new Date(now.getTime() + 100)
+                                }
+                            })
+                        );
+                    }
+                }
+            }
+        }
+
         await prisma.$transaction(transactionOps);
 
         // Calculate time since last claim for rapid-declaration detection
@@ -110,17 +175,21 @@ export async function POST(
             ? now.getTime() - new Date(participant.lastClaimAt).getTime()
             : null;
 
+        // Only return non-PALIER boosts as "applied" (i.e. per-claim modifiers)
+        const regularApplied = effectiveBoosts.filter(b => b.type !== "PALIER");
+
         return NextResponse.json({
             success: true,
             claimId,
             timeSinceLastClaim,
-            appliedBoosts: effectiveBoosts.map((b) => ({
+            appliedBoosts: regularApplied.map((b) => ({
                 id: b.id,
                 label: b.label,
                 type: b.type,
                 multiplier: b.multiplier,
                 bonusCents: b.bonusCents,
             })),
+            triggeredPaliers,
         });
     } catch (error) {
         console.error("Claim error:", error);

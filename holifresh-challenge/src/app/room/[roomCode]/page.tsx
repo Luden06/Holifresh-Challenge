@@ -18,7 +18,9 @@ import {
     MessageSquare,
     AlertTriangle,
     Zap,
-    Gift
+    Gift,
+    ChevronDown,
+    Award
 } from "lucide-react";
 import { formatCents, cn } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
@@ -88,6 +90,7 @@ export default function RoomPage() {
 
     // "Mes RDV" section
     const [showMyClaims, setShowMyClaims] = useState(false);
+    const [boostBannerExpanded, setBoostBannerExpanded] = useState(false);
 
     // Animation refs
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -198,6 +201,10 @@ export default function RoomPage() {
                     const boostLabels = data.appliedBoosts.map((b: any) => b.label).join(' + ');
                     feedbackMsg = `+1 RDV — ${boostLabels} ⚡`;
                 }
+                if (data.triggeredPaliers && data.triggeredPaliers.length > 0) {
+                    const palierLabels = data.triggeredPaliers.map((p: any) => `🎯 ${p.label}`).join(' + ');
+                    feedbackMsg += ` | ${palierLabels} 🎉`;
+                }
                 setFeedback({ type: 'success', message: feedbackMsg });
                 fetchSummary();
 
@@ -209,7 +216,7 @@ export default function RoomPage() {
                 setTimeout(() => {
                     setFeedback(null);
                     setClaiming(false);
-                }, 3000);
+                }, 4000);
             } else {
                 const err = await res.json();
                 setFeedback({ type: 'error', message: err.error || "Une erreur est survenue" });
@@ -281,7 +288,7 @@ export default function RoomPage() {
     const teamCagnotte = summary?.teamCagnotteCents || 0;
 
     return (
-        <div className="max-w-4xl mx-auto p-4 flex flex-col min-h-screen gap-6 pb-24 md:pb-8 relative">
+        <div className="max-w-4xl mx-auto p-3 sm:p-4 flex flex-col min-h-screen gap-4 sm:gap-6 pb-24 md:pb-8 relative overflow-x-hidden">
             <canvas
                 ref={canvasRef}
                 className="fixed inset-0 pointer-events-none z-[100]"
@@ -291,45 +298,91 @@ export default function RoomPage() {
 
             {/* Active Boost Banner */}
             {activeBoosts.length > 0 && (
-                <div className="bg-gradient-to-r from-holi-orange/10 to-holi-red/10 border border-holi-orange/20 rounded-2xl px-4 py-3 flex items-center gap-3 animate-pulse shadow-lg shadow-holi-orange/5">
-                    <div className="p-2 bg-holi-orange/20 rounded-full">
-                        <Zap className="w-5 h-5 text-holi-orange" />
+                <button
+                    onClick={() => setBoostBannerExpanded(prev => !prev)}
+                    className="w-full text-left bg-gradient-to-r from-holi-orange/10 to-holi-red/10 border border-holi-orange/20 rounded-2xl px-4 py-3 shadow-lg shadow-holi-orange/5 transition-all"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-holi-orange/20 rounded-full animate-pulse">
+                            <Zap className="w-5 h-5 text-holi-orange" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-holi-orange">Boost actif ! ({activeBoosts.length})</p>
+                            {!boostBannerExpanded && (
+                                <div className="flex flex-wrap gap-1.5 mt-0.5">
+                                    {activeBoosts.map((b: any) => (
+                                        <span key={b.id} className={cn("text-xs font-bold", b.type === "PALIER" ? "text-purple-700" : "text-holi-dark")}>
+                                            {b.type === "PALIER"
+                                                ? `🎯 ${b.label}`
+                                                : `${b.label} ${b.type === 'MULTIPLIER' ? `×${b.multiplier}` : `+${formatCents(b.bonusCents)}`}`
+                                            }
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <ChevronDown className={cn("w-4 h-4 text-holi-orange transition-transform flex-shrink-0", boostBannerExpanded && "rotate-180")} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-black uppercase tracking-wider text-holi-orange">Boost actif !</p>
-                        <div className="flex flex-wrap gap-1.5 mt-0.5">
+                    {boostBannerExpanded && (
+                        <div className="mt-3 space-y-2 border-t border-holi-orange/10 pt-3">
                             {activeBoosts.map((b: any) => (
-                                <span key={b.id} className="text-xs font-bold text-holi-dark">
-                                    {b.label} {b.type === 'MULTIPLIER' ? `×${b.multiplier}` : `+${formatCents(b.bonusCents)}`}
-                                </span>
+                                <div key={b.id} className={cn(
+                                    "flex items-start gap-2.5 p-2.5 rounded-xl",
+                                    b.type === "PALIER" ? "bg-purple-50/50" : "bg-white/60"
+                                )}>
+                                    <div className={cn(
+                                        "p-1.5 rounded-lg flex-shrink-0 mt-0.5",
+                                        b.type === "MULTIPLIER" ? "bg-blue-100" : b.type === "PALIER" ? "bg-purple-100" : "bg-orange-100"
+                                    )}>
+                                        {b.type === "PALIER" ? <Award className="w-3.5 h-3.5 text-purple-600" /> : <Zap className="w-3.5 h-3.5 text-holi-orange" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold text-holi-dark">{b.label}</span>
+                                            <span className={cn(
+                                                "text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase",
+                                                b.type === "MULTIPLIER" ? "bg-blue-100 text-blue-600"
+                                                    : b.type === "PALIER" ? "bg-purple-100 text-purple-600"
+                                                        : "bg-orange-100 text-orange-600"
+                                            )}>
+                                                {b.type === "MULTIPLIER" ? `×${b.multiplier}`
+                                                    : b.type === "PALIER" ? `${b.palierTarget} RDV ${b.palierScope === 'TEAM' ? 'équipe' : 'perso'}`
+                                                        : `+${formatCents(b.bonusCents)}`}
+                                            </span>
+                                        </div>
+                                        {b.description && (
+                                            <p className="text-[11px] text-neutral-500 mt-0.5 leading-relaxed">{b.description}</p>
+                                        )}
+                                    </div>
+                                </div>
                             ))}
                         </div>
-                    </div>
-                </div>
+                    )}
+                </button>
             )}
 
             {/* Header / Stats Summary */}
-            <header className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-holi-orange/10 rounded-xl flex items-center justify-center">
+            <header className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 bg-holi-orange/10 rounded-xl flex items-center justify-center flex-shrink-0">
                         <CalendarCheck className="w-6 h-6 text-holi-orange" />
                     </div>
-                    <div>
-                        <h1 className="font-heading font-bold text-xl leading-tight text-holi-navy">{summary?.roomName}</h1>
-                        <p className="text-holi-grey text-xs flex items-center gap-1">
-                            <UserIcon className="w-3 h-3" /> {participant?.name}
+                    <div className="min-w-0">
+                        <h1 className="font-heading font-bold text-lg sm:text-xl leading-tight text-holi-navy truncate">{summary?.roomName}</h1>
+                        <p className="text-holi-grey text-xs flex items-center gap-1 truncate">
+                            <UserIcon className="w-3 h-3 flex-shrink-0" /> {participant?.name}
                         </p>
                     </div>
                 </div>
 
-                <div className="text-right">
-                    <p className="text-xl font-heading font-black text-holi-red">{formatCents(personalCagnotte)}</p>
-                    <p className="text-[10px] text-holi-grey uppercase tracking-widest font-bold">Ma Cagnotte</p>
+                <div className="text-right flex-shrink-0">
+                    <p className="text-lg sm:text-xl font-heading font-black text-holi-red">{formatCents(personalCagnotte)}</p>
+                    <p className="text-[9px] sm:text-[10px] text-holi-grey uppercase tracking-wider sm:tracking-widest font-bold">Cagnotte</p>
                 </div>
             </header>
 
             {/* Team Progress Card with Personal Overlay */}
-            <div className="card bg-gradient-to-br from-holi-blue/5 to-white border-holi-blue/10 p-5 overflow-hidden">
+            <div className="card bg-gradient-to-br from-holi-blue/5 to-white border-holi-blue/10 p-3 sm:p-5 overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                         <Users className="w-5 h-5 text-holi-blue" />
@@ -366,49 +419,62 @@ export default function RoomPage() {
             </div>
 
             {/* Main Claim Button Area */}
-            <div className="flex-1 flex flex-col items-center justify-center gap-8 py-8">
-                <div className="text-center space-y-2">
-                    <p className="text-holi-grey/60 uppercase tracking-[0.3em] font-black text-[10px]">Appuie pour déclarer</p>
-                    <p className="text-3xl font-heading font-black text-holi-navy italic tracking-tighter uppercase">RDV Qualifié</p>
-                </div>
-
-                <div className="relative" ref={buttonRef}>
-                    <div className={cn(
-                        "absolute -inset-4 bg-holi-orange/10 rounded-full animate-pulse transition-opacity duration-500",
-                        claiming ? "opacity-0" : "opacity-100"
-                    )} />
-
-                    <button
-                        onClick={handleClaim}
-                        disabled={claiming || summary?.status !== "OPEN"}
-                        className={cn(
-                            "relative w-48 h-48 rounded-full flex flex-col items-center justify-center gap-1 transition-all active:scale-90 shadow-2xl overflow-hidden",
-                            summary?.status === "OPEN"
-                                ? "bg-gradient-to-b from-holi-orange to-holi-red shadow-holi-orange/40 text-white cursor-pointer"
-                                : "bg-neutral-200 shadow-none text-neutral-400 cursor-not-allowed"
-                        )}
-                    >
-                        <PlusCircle className={cn("w-16 h-16", claiming && "animate-spin")} />
-                        <span className="font-heading font-black text-xl tracking-tighter uppercase">Boom !</span>
-
-                        <div className="absolute top-0 -left-full w-full h-full bg-white/30 -skew-x-[45deg] animate-[shimmer_3s_infinite]" />
-                    </button>
-                </div>
-
-                {/* Feedback Messages */}
-                <div className="h-10">
-                    {feedback && (
-                        <div className={cn(
-                            "flex items-center gap-2 px-4 py-2 rounded-xl animate-float border font-bold italic",
-                            feedback.type === 'success' ? "bg-holi-blue/10 border-holi-blue/20 text-holi-blue" : "bg-holi-pink/10 border-holi-pink/20 text-holi-pink"
-                        )}>
-                            {feedback.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                            <span>{feedback.message}</span>
+            <div className="flex flex-col items-center justify-center gap-5 py-5">
+                {summary?.status === "OPEN" ? (
+                    <div className="text-center space-y-4 animate-pulse">
+                        <div className="w-24 h-24 mx-auto rounded-full bg-holi-blue/10 flex items-center justify-center">
+                            <span className="text-4xl">🚀</span>
                         </div>
-                    )}
-                </div>
-            </div>
+                        <div className="space-y-2">
+                            <p className="text-lg font-heading font-black text-holi-navy">L'événement va bientôt commencer</p>
+                            <p className="text-sm text-holi-grey">Tu pourras déclarer tes RDV dès le lancement !</p>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div className="text-center space-y-2">
+                            <p className="text-holi-grey/60 uppercase tracking-[0.3em] font-black text-[10px]">Appuie pour déclarer</p>
+                            <p className="text-3xl font-heading font-black text-holi-navy italic tracking-tighter uppercase">RDV Qualifié</p>
+                        </div>
 
+                        <div className="relative" ref={buttonRef}>
+                            <div className={cn(
+                                "absolute -inset-4 bg-holi-orange/10 rounded-full animate-pulse transition-opacity duration-500",
+                                claiming ? "opacity-0" : "opacity-100"
+                            )} />
+
+                            <button
+                                onClick={handleClaim}
+                                disabled={claiming || summary?.status !== "LIVE"}
+                                className={cn(
+                                    "relative w-40 h-40 rounded-full flex flex-col items-center justify-center gap-1 transition-all active:scale-90 shadow-2xl overflow-hidden",
+                                    summary?.status === "LIVE"
+                                        ? "bg-gradient-to-b from-holi-orange to-holi-red shadow-holi-orange/40 text-white cursor-pointer"
+                                        : "bg-neutral-200 shadow-none text-neutral-400 cursor-not-allowed"
+                                )}
+                            >
+                                <PlusCircle className={cn("w-16 h-16", claiming && "animate-spin")} />
+                                <span className="font-heading font-black text-xl tracking-tighter uppercase">Boom !</span>
+
+                                <div className="absolute top-0 -left-full w-full h-full bg-white/30 -skew-x-[45deg] animate-[shimmer_3s_infinite]" />
+                            </button>
+                        </div>
+
+                        {/* Feedback Messages */}
+                        <div className="h-10">
+                            {feedback && (
+                                <div className={cn(
+                                    "flex items-center gap-2 px-4 py-2 rounded-xl animate-float border font-bold italic",
+                                    feedback.type === 'success' ? "bg-holi-blue/10 border-holi-blue/20 text-holi-blue" : "bg-holi-pink/10 border-holi-pink/20 text-holi-pink"
+                                )}>
+                                    {feedback.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                                    <span>{feedback.message}</span>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
+            </div>
             {/* Leaderboard Section */}
             <div className="card p-0 overflow-hidden shadow-lg border-holi-navy/5">
                 <div className="p-4 bg-holi-navy/[0.02] flex items-center justify-between border-b border-black/5">
@@ -495,6 +561,40 @@ export default function RoomPage() {
                                                 </span>
                                                 {claim.type === 'BONUS' && claim.valueCents && (
                                                     <span className="text-[10px] font-bold text-holi-orange">+{formatCents(claim.valueCents)}</span>
+                                                )}
+                                                {claim.type !== 'BONUS' && claim.status === 'VALID' && (() => {
+                                                    const baseCents = summary?.cagnotteValueCents || 0;
+                                                    let totalCents = baseCents;
+                                                    const parts: string[] = [`${formatCents(baseCents)}`];
+                                                    if (claim.claimBoosts?.length > 0) {
+                                                        for (const cb of claim.claimBoosts) {
+                                                            if (cb.boost.type === 'MULTIPLIER' && cb.boost.multiplier) {
+                                                                totalCents = Math.round(totalCents * cb.boost.multiplier);
+                                                                parts.push(`×${cb.boost.multiplier}`);
+                                                            } else if (cb.boost.type === 'FLAT_BONUS' && cb.boost.bonusCents) {
+                                                                totalCents += cb.boost.bonusCents;
+                                                                parts.push(`+${formatCents(cb.boost.bonusCents)}`);
+                                                            }
+                                                        }
+                                                    }
+                                                    return (
+                                                        <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                            <span className="text-[10px] font-bold text-green-600">+{formatCents(totalCents)}</span>
+                                                            {claim.claimBoosts?.length > 0 && (
+                                                                <span className="text-[9px] text-neutral-400">({parts.join(' ')})</span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                                {claim.type !== 'BONUS' && claim.claimBoosts?.length > 0 && (
+                                                    <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                        {claim.claimBoosts.map((cb: any, idx: number) => (
+                                                            <span key={idx} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-holi-orange/10 text-holi-orange">
+                                                                <Zap className="w-2 h-2" />
+                                                                {cb.boost.label}
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 )}
                                             </div>
 
