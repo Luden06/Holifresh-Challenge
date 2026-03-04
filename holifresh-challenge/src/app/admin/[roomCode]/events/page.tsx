@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import {
     ArrowLeft,
@@ -25,6 +25,8 @@ import {
 import Link from "next/link";
 import { formatCents, cn } from "@/lib/utils";
 
+const INACTIVE_STATUSES = ['CLOSED', 'ARCHIVED'];
+
 export default function AdminEventsPage() {
     const { roomCode } = useParams();
     const roomId = roomCode;
@@ -32,6 +34,7 @@ export default function AdminEventsPage() {
     const [summary, setSummary] = useState<any>(null);
     const [boosts, setBoosts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Rename modal state
     const [renamingParticipant, setRenamingParticipant] = useState<{ id: string, name: string } | null>(null);
@@ -97,8 +100,16 @@ export default function AdminEventsPage() {
             ]);
 
             if (eventsRes.ok && summaryRes.ok) {
-                setEvents(await eventsRes.json());
-                setSummary(await summaryRes.json());
+                const eventsData = await eventsRes.json();
+                const summaryData = await summaryRes.json();
+                setEvents(eventsData);
+                setSummary(summaryData);
+
+                // Stop polling if room is no longer active
+                if (INACTIVE_STATUSES.includes(summaryData.status) && intervalRef.current) {
+                    clearInterval(intervalRef.current);
+                    intervalRef.current = null;
+                }
             }
             if (boostsRes.ok) {
                 setBoosts(await boostsRes.json());
@@ -112,8 +123,23 @@ export default function AdminEventsPage() {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 2000);
-        return () => clearInterval(interval);
+        intervalRef.current = setInterval(fetchData, 8000);
+
+        const handleVisibility = () => {
+            if (document.hidden) {
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            } else {
+                fetchData();
+                intervalRef.current = setInterval(fetchData, 8000);
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
     }, [roomId]);
 
     async function confirmCancel() {

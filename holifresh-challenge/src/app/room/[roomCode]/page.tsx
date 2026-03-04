@@ -70,6 +70,8 @@ class Particle {
 const RAPID_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 const SELF_CANCEL_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
+const INACTIVE_STATUSES = ['CLOSED', 'ARCHIVED'];
+
 export default function RoomPage() {
     const { roomCode } = useParams();
     const router = useRouter();
@@ -97,13 +99,21 @@ export default function RoomPage() {
     const particlesRef = useRef<Particle[]>([]);
     const animationFrameRef = useRef<number | null>(null);
     const buttonRef = useRef<HTMLDivElement>(null);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const fetchSummary = useCallback(async () => {
         if (!participant) return;
         try {
             const res = await fetch(`/api/rooms/${roomCode}/summary?participantId=${participant.id}`);
             if (res.ok) {
-                setSummary(await res.json());
+                const data = await res.json();
+                setSummary(data);
+
+                // Stop polling if room is no longer active
+                if (INACTIVE_STATUSES.includes(data.status) && intervalRef.current) {
+                    clearInterval(intervalRef.current);
+                    intervalRef.current = null;
+                }
             }
         } catch (err) {
             console.error(err);
@@ -125,13 +135,9 @@ export default function RoomPage() {
         setParticipant({ id, name, token });
     }, [roomCode, router]);
 
-    useEffect(() => {
-        if (!participant) return;
-
-        fetchSummary();
-        const interval = setInterval(fetchSummary, 5000);
-
-        // Animation loop
+    // Animation loop — only runs when particles exist
+    const startAnimation = useCallback(() => {
+        if (animationFrameRef.current) return;
         const animate = () => {
             const canvas = canvasRef.current;
             const ctx = canvas?.getContext('2d');
@@ -143,12 +149,35 @@ export default function RoomPage() {
                     p.draw(ctx);
                 });
             }
-            animationFrameRef.current = requestAnimationFrame(animate);
+            if (particlesRef.current.length > 0) {
+                animationFrameRef.current = requestAnimationFrame(animate);
+            } else {
+                animationFrameRef.current = null;
+            }
         };
         animationFrameRef.current = requestAnimationFrame(animate);
+    }, []);
+
+    useEffect(() => {
+        if (!participant) return;
+
+        fetchSummary();
+        intervalRef.current = setInterval(fetchSummary, 5000);
+
+        const handleVisibility = () => {
+            if (document.hidden) {
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            } else {
+                fetchSummary();
+                intervalRef.current = setInterval(fetchSummary, 5000);
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
 
         return () => {
-            clearInterval(interval);
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            document.removeEventListener('visibilitychange', handleVisibility);
             if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         };
     }, [participant, fetchSummary]);
@@ -166,6 +195,7 @@ export default function RoomPage() {
         for (let i = 0; i < 40; i++) {
             particlesRef.current.push(new Particle(x, y, colors[Math.floor(Math.random() * colors.length)]));
         }
+        startAnimation();
 
         // Screen shake
         document.body.classList.add('animate-shake-short');

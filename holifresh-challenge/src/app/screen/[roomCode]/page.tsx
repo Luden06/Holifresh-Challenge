@@ -65,6 +65,8 @@ class TVParticle {
     }
 }
 
+const INACTIVE_STATUSES = ['CLOSED', 'ARCHIVED'];
+
 export default function TVScreenPage() {
     const { roomCode } = useParams();
     const [summary, setSummary] = useState<any>(null);
@@ -79,6 +81,30 @@ export default function TVScreenPage() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const particlesRef = useRef<TVParticle[]>([]);
     const animationFrameRef = useRef<number | null>(null);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Animation loop — only runs when particles exist
+    const startAnimation = useCallback(() => {
+        if (animationFrameRef.current) return; // already running
+        const animate = () => {
+            const canvas = canvasRef.current;
+            const ctx = canvas?.getContext('2d');
+            if (canvas && ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                particlesRef.current = particlesRef.current.filter(p => p.life < p.maxLife);
+                particlesRef.current.forEach(p => {
+                    p.update();
+                    p.draw(ctx);
+                });
+            }
+            if (particlesRef.current.length > 0) {
+                animationFrameRef.current = requestAnimationFrame(animate);
+            } else {
+                animationFrameRef.current = null;
+            }
+        };
+        animationFrameRef.current = requestAnimationFrame(animate);
+    }, []);
 
     const triggerPalierCelebration = (palier: any) => {
         // 1. Particle explosion
@@ -88,6 +114,7 @@ export default function TVScreenPage() {
             for (let i = 0; i < 150; i++) {
                 particlesRef.current.push(new TVParticle(canvas.width / 2, canvas.height / 2, colors[Math.floor(Math.random() * colors.length)]));
             }
+            startAnimation();
         }
 
         // 2. Screen Flash
@@ -130,6 +157,12 @@ export default function TVScreenPage() {
 
                 prevScoreRef.current = newScore;
                 setSummary(data);
+
+                // Stop polling if room is no longer active
+                if (INACTIVE_STATUSES.includes(data.status) && intervalRef.current) {
+                    clearInterval(intervalRef.current);
+                    intervalRef.current = null;
+                }
             }
         } catch (err) {
             console.error(err);
@@ -140,26 +173,22 @@ export default function TVScreenPage() {
 
     useEffect(() => {
         fetchSummary();
-        const interval = setInterval(fetchSummary, 3000);
+        intervalRef.current = setInterval(fetchSummary, 8000);
 
-        // Animation Loop
-        const animate = () => {
-            const canvas = canvasRef.current;
-            const ctx = canvas?.getContext('2d');
-            if (canvas && ctx) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                particlesRef.current = particlesRef.current.filter(p => p.life < p.maxLife);
-                particlesRef.current.forEach(p => {
-                    p.update();
-                    p.draw(ctx);
-                });
+        const handleVisibility = () => {
+            if (document.hidden) {
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            } else {
+                fetchSummary();
+                intervalRef.current = setInterval(fetchSummary, 8000);
             }
-            animationFrameRef.current = requestAnimationFrame(animate);
         };
-        animationFrameRef.current = requestAnimationFrame(animate);
+        document.addEventListener('visibilitychange', handleVisibility);
 
         return () => {
-            clearInterval(interval);
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            document.removeEventListener('visibilitychange', handleVisibility);
             if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         };
     }, [roomCode, fetchSummary]);
