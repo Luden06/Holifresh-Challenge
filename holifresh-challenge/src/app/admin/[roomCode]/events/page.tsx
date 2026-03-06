@@ -20,7 +20,8 @@ import {
     Sparkles,
     Gift,
     Coins,
-    Pencil
+    Pencil,
+    Users
 } from "lucide-react";
 import Link from "next/link";
 import { formatCents, cn } from "@/lib/utils";
@@ -46,6 +47,10 @@ export default function AdminEventsPage() {
     const [cancelReason, setCancelReason] = useState("");
     const [cancelLoading, setCancelLoading] = useState(false);
 
+    // Kick modal state
+    const [kickingParticipant, setKickingParticipant] = useState<any | null>(null);
+    const [kickLoading, setKickLoading] = useState(false);
+
     // Create boost modal state
     const [showCreateBoost, setShowCreateBoost] = useState(false);
     const [newBoost, setNewBoost] = useState({
@@ -65,7 +70,7 @@ export default function AdminEventsPage() {
     const [createBoostLoading, setCreateBoostLoading] = useState(false);
 
     // Bonus direct state
-    const [activeTab, setActiveTab] = useState<"BOOSTS" | "BONUS">("BOOSTS");
+    const [activeTab, setActiveTab] = useState<"BOOSTS" | "BONUS" | "PARTICIPANTS">("BOOSTS");
     const [statusMessage, setStatusMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
     const [newBonus, setNewBonus] = useState({
         participantId: "ALL",
@@ -185,6 +190,24 @@ export default function AdminEventsPage() {
             console.error(err);
         } finally {
             setRenameLoading(false);
+        }
+    }
+
+    async function confirmKick() {
+        if (!kickingParticipant) return;
+        setKickLoading(true);
+        try {
+            const res = await fetch(`/api/rooms/${roomId}/participants/${kickingParticipant.id}`, {
+                method: "DELETE",
+            });
+            if (res.ok) {
+                fetchData();
+                setKickingParticipant(null);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setKickLoading(false);
         }
     }
 
@@ -420,6 +443,15 @@ export default function AdminEventsPage() {
                         >
                             <Gift className="w-4 h-4" /> Bonus Direct
                         </button>
+                        <button
+                            onClick={() => setActiveTab("PARTICIPANTS")}
+                            className={cn(
+                                "flex-1 sm:flex-none px-4 py-1.5 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap",
+                                activeTab === "PARTICIPANTS" ? "bg-white shadow-sm text-holi-orange" : "text-neutral-500 hover:text-neutral-700 hover:bg-black/5"
+                            )}
+                        >
+                            <Users className="w-4 h-4" /> Participants
+                        </button>
                     </div>
 
                     {activeTab === "BOOSTS" && (
@@ -603,6 +635,78 @@ export default function AdminEventsPage() {
                             >
                                 {createBonusLoading ? "Ajout en cours..." : "Valider le Bonus Direct 🚀"}
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* PARTICIPANTS TAB */}
+                {activeTab === "PARTICIPANTS" && (
+                    <div className="card p-0 overflow-hidden border-white/5">
+                        <div className="p-4 border-b border-white/5 bg-white/2">
+                            <h3 className="font-bold flex items-center gap-2">
+                                <Users className="w-5 h-5 text-holi-blue" />
+                                Gestion des Participants
+                            </h3>
+                            <p className="text-sm text-neutral-500">
+                                Liste des joueurs connectés à l'événement. Vous pouvez les renommer ou les exclure (kick) en cas de doublon.
+                            </p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-white/5 text-xs text-neutral-400 uppercase tracking-wider">
+                                    <tr>
+                                        <th className="px-6 py-4 font-semibold">Nom / Joueur</th>
+                                        <th className="px-6 py-4 font-semibold">RDV Validés</th>
+                                        <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {summary?.leaderboard?.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={3} className="px-6 py-12 text-center text-neutral-500">
+                                                Aucun participant pour le moment.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        summary?.leaderboard?.map((p: any) => (
+                                            <tr key={p.id} className="group hover:bg-white/[0.02] transition-colors">
+                                                <td className="px-6 py-4 font-bold text-holi-dark flex items-center gap-2">
+                                                    <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center text-xs text-neutral-500 shadow-inner">
+                                                        {p.displayName.substring(0, 2).toUpperCase()}
+                                                    </div>
+                                                    {p.displayName}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700">
+                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        {p.points}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <button
+                                                            onClick={() => openRename(p.id, p.displayName)}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-neutral-400 hover:text-holi-blue hover:bg-holi-blue/10 transition-all"
+                                                            title="Renommer"
+                                                        >
+                                                            <UserRoundPen className="w-4 h-4" />
+                                                            <span className="hidden sm:inline">Renommer</span>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setKickingParticipant(p)}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:text-white hover:bg-red-500 hover:shadow-lg transition-all"
+                                                            title="Exclure (Kick)"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                            <span className="hidden sm:inline">Kick</span>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
@@ -1315,6 +1419,36 @@ export default function AdminEventsPage() {
                                 Confirmer l&apos;annulation
                             </button>
                             <button onClick={() => setCancellingClaim(null)} className="flex-1 btn-ghost text-sm font-black uppercase">Retour</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Kick Confirmation Modal */}
+            {kickingParticipant && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setKickingParticipant(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-float" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-center">
+                            <div className="p-4 bg-red-50 rounded-full">
+                                <Trash2 className="w-8 h-8 text-red-600" />
+                            </div>
+                        </div>
+                        <div className="text-center space-y-2">
+                            <h3 className="text-xl font-heading font-black text-red-600 uppercase italic">Exclure le participant</h3>
+                            <p className="text-holi-grey text-sm font-medium">
+                                Êtes-vous sûr de vouloir supprimer <span className="font-bold text-holi-dark">{kickingParticipant.displayName}</span> ?
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs font-bold text-red-600">
+                            <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                            <div>Cette action supprimera définitivement le participant et toutes ses déclarations (claims). Elle ne peut pas être annulée.</div>
+                        </div>
+                        <div className="flex items-center gap-3 pt-1">
+                            <button onClick={confirmKick} disabled={kickLoading} className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-black uppercase transition-all bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-200">
+                                {kickLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                Supprimer
+                            </button>
+                            <button onClick={() => setKickingParticipant(null)} className="flex-1 btn-ghost text-sm font-black uppercase">Annuler</button>
                         </div>
                     </div>
                 </div>

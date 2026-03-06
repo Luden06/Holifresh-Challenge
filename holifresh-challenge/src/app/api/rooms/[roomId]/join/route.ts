@@ -12,7 +12,7 @@ export async function POST(
     const { roomId } = await params;
 
     try {
-        const { displayName, joinCode } = await request.json();
+        const { displayName, joinCode, forceNew } = await request.json();
 
         if (!displayName || !joinCode) {
             return NextResponse.json({ error: "Display name and join code are required" }, { status: 400 });
@@ -33,22 +33,51 @@ export async function POST(
         let finalNameKey = nameKey;
         let counter = 1;
 
-        // Check for collisions and auto-suffix
-        while (true) {
-            const existing = await prisma.participant.findUnique({
-                where: {
-                    roomId_displayNameKey: {
-                        roomId: roomId,
-                        displayNameKey: finalNameKey,
-                    },
+        // Check for collisions
+        const existing = await prisma.participant.findUnique({
+            where: {
+                roomId_displayNameKey: {
+                    roomId: roomId,
+                    displayNameKey: finalNameKey,
                 },
+            },
+        });
+
+        if (existing && !forceNew) {
+            // Option 3D: Return a 409 to prompt the user for takeover
+            const claimsCount = await prisma.claim.count({
+                where: { participantId: existing.id, status: "VALID", type: "RDV" }
             });
 
-            if (!existing) break;
+            return NextResponse.json({
+                error: "Participant already exists",
+                requiresConfirmation: true,
+                existingParticipant: {
+                    id: existing.id,
+                    displayName: existing.displayName,
+                    points: claimsCount
+                }
+            }, { status: 409 });
+        }
 
-            counter++;
-            finalName = `${name} (${counter})`;
-            finalNameKey = `${nameKey}${counter}`;
+        // Auto-suffix mode (if forceNew is true or if we are actively finding a free suffix)
+        if (existing) {
+            while (true) {
+                const check = await prisma.participant.findUnique({
+                    where: {
+                        roomId_displayNameKey: {
+                            roomId: roomId,
+                            displayNameKey: finalNameKey,
+                        },
+                    },
+                });
+
+                if (!check) break;
+
+                counter++;
+                finalName = `${name} (${counter})`;
+                finalNameKey = `${nameKey}${counter}`;
+            }
         }
 
         // Generate secret token

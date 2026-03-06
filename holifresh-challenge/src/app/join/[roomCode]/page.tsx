@@ -14,6 +14,13 @@ export default function JoinPage() {
     const [checking, setChecking] = useState(true);
     const [error, setError] = useState("");
 
+    // Takeover state
+    const [takeoverPrompt, setTakeoverPrompt] = useState<{
+        id: string;
+        displayName: string;
+        points: number;
+    } | null>(null);
+
     // If the participant already has a token, skip join and go to room
     useEffect(() => {
         const token = localStorage.getItem(`room_${roomCode}_token`);
@@ -27,7 +34,7 @@ export default function JoinPage() {
         }
     }, [roomCode, router]);
 
-    async function handleJoin(e: React.FormEvent) {
+    async function handleJoin(e: React.FormEvent, forceNew: boolean = false) {
         e.preventDefault();
         setLoading(true);
         setError("");
@@ -35,7 +42,7 @@ export default function JoinPage() {
         try {
             const res = await fetch(`/api/rooms/${roomCode}/join`, {
                 method: "POST",
-                body: JSON.stringify({ displayName, joinCode }),
+                body: JSON.stringify({ displayName, joinCode, forceNew }),
             });
 
             if (res.ok) {
@@ -46,12 +53,46 @@ export default function JoinPage() {
                 localStorage.setItem(`room_${roomCode}_id`, data.participantId);
 
                 router.push(`/room/${roomCode}`);
+            } else if (res.status === 409) {
+                const err = await res.json();
+                if (err.requiresConfirmation) {
+                    setTakeoverPrompt(err.existingParticipant);
+                }
             } else {
                 const err = await res.json();
                 setError(err.error || "Une erreur est survenue");
             }
         } catch (err) {
             setError("Impossible de rejoindre la room");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function handleReconnect() {
+        if (!takeoverPrompt) return;
+        setLoading(true);
+        setError("");
+
+        try {
+            const res = await fetch(`/api/rooms/${roomCode}/join/reconnect`, {
+                method: "POST",
+                body: JSON.stringify({ participantId: takeoverPrompt.id, joinCode }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                localStorage.setItem(`room_${roomCode}_token`, data.participantToken);
+                localStorage.setItem(`room_${roomCode}_name`, data.displayName);
+                localStorage.setItem(`room_${roomCode}_id`, data.participantId);
+
+                router.push(`/room/${roomCode}`);
+            } else {
+                const err = await res.json();
+                setError(err.error || "Impossible de se reconnecter");
+            }
+        } catch (err) {
+            setError("Erreur lors de la reconnexion");
         } finally {
             setLoading(false);
         }
@@ -108,13 +149,46 @@ export default function JoinPage() {
 
                         {error && <p className="text-holi-pink text-sm text-center bg-holi-pink/10 py-2 rounded-lg border border-holi-pink/20 font-bold italic">{error}</p>}
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="btn-primary w-full py-4 text-lg font-black uppercase tracking-widest"
-                        >
-                            {loading ? "Chargement..." : "Commençons !"}
-                        </button>
+                        {takeoverPrompt ? (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                                <div className="p-4 bg-holi-orange/10 border border-holi-orange/20 rounded-xl mt-4">
+                                    <h3 className="text-holi-dark font-black text-center mb-2">Déjà connecté ?</h3>
+                                    <p className="text-holi-grey text-sm text-center mb-4 leading-relaxed">
+                                        Il y a déjà un joueur nommé <span className="font-bold text-holi-dark">{takeoverPrompt.displayName}</span> ayant <span className="font-bold text-holi-dark">{takeoverPrompt.points} RDVs</span>.
+                                        Est-ce bien vous qui reprenez votre partie depuis ce nouvel appareil ?
+                                    </p>
+                                    <div className="flex flex-col gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={handleReconnect}
+                                            disabled={loading}
+                                            className="btn-primary w-full py-3 text-sm font-black uppercase tracking-wider"
+                                        >
+                                            {loading ? "Reconnexion..." : "Oui, c'est moi ! (Reconnexion)"}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => handleJoin(e, true)}
+                                            disabled={loading}
+                                            className="btn-ghost w-full py-3 text-sm font-black uppercase tracking-wider border-2 border-neutral-200"
+                                        >
+                                            Non, créer "{displayName} (2)"
+                                        </button>
+                                    </div>
+                                    <div className="mt-3 text-center">
+                                        <button type="button" onClick={() => setTakeoverPrompt(null)} className="text-xs text-holi-grey underline hover:text-holi-dark font-bold">Annuler</button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <button
+                                type="submit"
+                                disabled={loading || !displayName.trim() || !joinCode.trim()}
+                                className="btn-primary w-full py-4 text-lg font-black uppercase tracking-widest mt-2"
+                            >
+                                {loading ? "Chargement..." : "Commençons !"}
+                            </button>
+                        )}
                     </form>
                 </div>
             )}

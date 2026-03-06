@@ -247,6 +247,15 @@ export default function RoomPage() {
                     setFeedback(null);
                     setClaiming(false);
                 }, 4000);
+            } else if (res.status === 401) {
+                // Token invalid or session taken over
+                localStorage.removeItem(`room_${roomCode}_token`);
+                localStorage.removeItem(`room_${roomCode}_name`);
+                localStorage.removeItem(`room_${roomCode}_id`);
+                setFeedback({ type: 'error', message: "Session expirée. Veuillez vous reconnecter." });
+                setTimeout(() => {
+                    router.push(`/join/${roomCode}`);
+                }, 2000);
             } else {
                 const err = await res.json();
                 setFeedback({ type: 'error', message: err.error || "Une erreur est survenue" });
