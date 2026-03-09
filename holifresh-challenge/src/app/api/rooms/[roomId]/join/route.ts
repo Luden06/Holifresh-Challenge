@@ -23,7 +23,7 @@ export async function POST(
         });
 
         if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 });
-        if (room.status !== "OPEN") return NextResponse.json({ error: "Room is not open" }, { status: 403 });
+        if (room.status !== "OPEN" && room.status !== "LIVE") return NextResponse.json({ error: "Room is not open" }, { status: 403 });
         if (room.joinCode !== joinCode) return NextResponse.json({ error: "Invalid join code" }, { status: 403 });
 
         // Normalize name for collision strategy
